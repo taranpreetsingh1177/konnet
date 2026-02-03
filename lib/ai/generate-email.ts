@@ -1,8 +1,6 @@
 import { generateText } from 'ai';
-import { createVertex } from '@ai-sdk/google-vertex';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { convertStructuredToHTML, type StructuredEmail } from './email-template-builder';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import { z } from 'zod';
 
 // Zod schema for structured email validation
@@ -28,10 +26,9 @@ const StructuredEmailSchema = z.object({
     blocks: z.array(EmailBlockSchema).min(3, 'Email must have at least 3 blocks'),
 });
 
-// Create Vertex AI provider with global location for Gemini 3 models
-const vertex = createVertex({
-    project: process.env.GOOGLE_VERTEX_PROJECT!,
-    location: 'global',
+// Create Google AI provider
+const google = createGoogleGenerativeAI({
+    apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
 });
 
 type LeadData = {
@@ -84,10 +81,33 @@ export async function generateCompanyEmailTemplate(
     console.log('');
 
     try {
-        // Load system prompt from file
-        console.log('📄 Loading system prompt...');
-        const systemPromptPath = join(process.cwd(), 'lib', 'ai', 'system-prompt.txt');
-        const systemPrompt = readFileSync(systemPromptPath, 'utf-8');
+        // System Prompt (Inlined for Vercel/Serverless safety)
+        const systemPrompt = `You are an expert cold email copywriter for Alvion, a strategy execution firm founded by tier-1 college grads (SRCC, IIT Bombay).
+Your goal is to write 1 highly personalized, researching-based cold email for a specific company.
+
+TONE & STYLE:
+- Founder-to-founder / Peer-to-peer (Not salesy)
+- Concise and direct. No "I hope this email finds you well".
+- Professional but conversational.
+- Use simple language. Avoid buzzwords.
+
+STRUCTURE:
+1. **Hook (Research-Based):** 1-2 sentences showing you know exactly what they are doing recently (news, product launch, specific initiative). NOT "I saw your website".
+2. **Value Prop (The "Alvion" Pitch):**
+   "We're a team from colleges like SRCC and IIT Bombay. We've worked with [PUMA, Unstop, ShipTurtle, ManipalCigna] to execute critical projects like GTM, Market Research, and Strategy."
+3. **The "Ask" / Relevance:**
+   "We could help ${company.name} with..." (Propose 3 specific, relevant services based on your research).
+4. **Call to Action (Low Friction):**
+   "Open to a 15-min chat? No pressure." or "Happy to share a case study."
+
+SERVICES TO CHOOSE FROM (Pick 3 relevant ones):
+- Market Entry Strategy
+- Primary Research (User Interviews)
+- Competitive Analysis
+- Go-to-Market (GTM) Execution
+- Product Strategy
+- Founder's Office Support`;
+
         console.log(`✅ System prompt loaded (${systemPrompt.length} characters)`);
         console.log('');
 
@@ -132,20 +152,16 @@ GUIDELINES:
 - Founder-to-founder tone, not salesy
 - Reference specific products/news/initiatives`;
 
-        console.log('🤖 Calling Gemini 3.0 Flash Preview with Google Search grounding...');
-        console.log('⚙️  Thinking Level: HIGH');
+        console.log('🤖 Calling Gemini 2.0 Flash Exp with Google Search grounding...');
         console.log('');
 
         const response = await generateText({
-            model: vertex('gemini-3-flash-preview'),
+            model: google('gemini-2.0-flash-exp'),
             system: systemPrompt,
             prompt: userPrompt,
             providerOptions: {
                 google: {
-                    thinkingConfig: {
-                        thinkingLevel: 'high',
-                        includeThoughts: true,
-                    }
+                    useSearchGrounding: true
                 }
             }
         });

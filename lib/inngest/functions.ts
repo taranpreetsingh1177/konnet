@@ -2,15 +2,8 @@ import { inngest } from "./client";
 import { createClient } from "@supabase/supabase-js";
 import { google as googleAPI } from "googleapis";
 import { generatePersonalizedEmail, replaceTemplateVars, generateCompanyEmailTemplate } from "@/lib/ai/generate-email";
-import { generateText, experimental_generateImage, generateImage } from "ai";
-import { createVertex } from "@ai-sdk/google-vertex";
-import { GoogleGenerativeAIProviderOptions } from '@ai-sdk/google'
 
-// Create Vertex AI provider with global location for Gemini 3 models
-const vertex = createVertex({
-    project: process.env.GOOGLE_VERTEX_PROJECT!,
-    location: 'global',
-});
+// Create admin Supabase client for background jobs
 
 // Create admin Supabase client for background jobs
 const supabase = createClient(
