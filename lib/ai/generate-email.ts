@@ -156,7 +156,7 @@ GUIDELINES:
         console.log('');
 
         const response = await generateText({
-            model: google('gemini-2.0-flash-thinking-exp'),
+            model: google('gemini-3-flash-preview'),
             system: systemPrompt,
             prompt: userPrompt,
             providerOptions: {
