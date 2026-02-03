@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
-import { RichTextEditor } from '@/components/ui/rich-text-editor'
+
 import { toast } from "sonner"
 import { cn } from '@/lib/utils'
 
