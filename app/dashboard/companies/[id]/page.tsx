@@ -60,17 +60,11 @@ export default function CompanyDetailPage() {
         try {
             toast.info("Retrying enrichment...")
 
-            // First, mark as processing optimistically
-            await fetch('/api/trpc/companies.update', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    json: {
-                        id: companyId,
-                        enrichment_status: 'pending',
-                        enrichment_error: null
-                    }
-                })
+            // First, mark as processing using tRPC mutation
+            await updateMutation.mutateAsync({
+                id: companyId,
+                enrichment_status: 'pending',
+                enrichment_error: null
             })
 
             const response = await fetch('/api/inngest/send', {
