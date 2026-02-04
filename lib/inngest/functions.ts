@@ -4,8 +4,6 @@ import { google as googleAPI } from "googleapis";
 import { generatePersonalizedEmail, replaceTemplateVars, generateCompanyEmailTemplate } from "@/lib/ai/generate-email";
 
 // Create admin Supabase client for background jobs
-
-// Create admin Supabase client for background jobs
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -55,7 +53,7 @@ export const sendCampaign = inngest.createFunction(
         });
 
         if (accounts.length === 0) {
-            throw new Error("No Gmail accounts associated with this campaign");
+            throw new Error("Nof Gmail accounts associated with this campaign");
         }
 
         // Step 4: Fetch pending leads for this campaign
