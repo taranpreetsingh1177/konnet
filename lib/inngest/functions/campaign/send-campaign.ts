@@ -15,9 +15,11 @@ export default inngest.createFunction(
     { event: "campaign/start" },
     async ({ event, step }) => {
         const { campaignId } = event.data;
+        console.log(`[Send Campaign] Starting campaign: ${campaignId}`);
 
         // Step 1: Fetch campaign details
         const campaign = await step.run("fetch-campaign", async () => {
+            console.log(`[Send Campaign] Fetching campaign details: ${campaignId}`);
             const { data, error } = await supabase
                 .from("campaigns")
                 .select("*")
@@ -25,6 +27,7 @@ export default inngest.createFunction(
                 .single();
 
             if (error || !data) {
+                console.error(`[Send Campaign] Campaign not found: ${campaignId}`, error);
                 throw new NonRetriableError(`Campaign not found: ${campaignId}`);
             }
             return data;
@@ -34,12 +37,14 @@ export default inngest.createFunction(
         if (campaign.scheduled_at) {
             const scheduledDate = new Date(campaign.scheduled_at);
             if (scheduledDate > new Date()) {
+                console.log(`[Send Campaign] Scheduling campaign for: ${scheduledDate.toISOString()}`);
                 await step.sleepUntil("wait-for-schedule", scheduledDate);
             }
         }
 
         // Step 2: Update campaign status to running
         await step.run("update-status-running", async () => {
+            console.log(`[Send Campaign] Updating status to running: ${campaignId}`);
             await supabase
                 .from("campaigns")
                 .update({ status: "running" })
@@ -48,6 +53,7 @@ export default inngest.createFunction(
 
         // Step 3: Fetch campaign accounts (Gmail senders)
         const accounts = await step.run("fetch-accounts", async () => {
+            console.log(`[Send Campaign] Fetching accounts for campaign: ${campaignId}`);
             const { data } = await supabase
                 .from("campaign_accounts")
                 .select("account_id, accounts(*)")
@@ -56,11 +62,13 @@ export default inngest.createFunction(
         });
 
         if (accounts.length === 0) {
+            console.warn(`[Send Campaign] No accounts found for campaign: ${campaignId}`);
             throw new NonRetriableError("No Gmail accounts associated with this campaign");
         }
 
         // Step 4: Fetch pending leads for this campaign
         const campaignLeads = await step.run("fetch-leads", async () => {
+            console.log(`[Send Campaign] Fetching pending leads for campaign: ${campaignId}`);
             const { data } = await supabase
                 .from("campaign_leads")
                 .select("*, leads(*, companies(name, email_template, email_subject))")
@@ -68,6 +76,8 @@ export default inngest.createFunction(
                 .eq("status", "pending");
             return data || [];
         });
+
+        console.log(`[Send Campaign] Found ${campaignLeads.length} pending leads`);
 
         // Step 5: Send emails - distribute across accounts (round-robin)
         let accountIndex = 0;
@@ -79,6 +89,7 @@ export default inngest.createFunction(
 
             await step.run(`send-email-${campaignLead.lead_id}`, async () => {
                 try {
+                    console.log(`[Send Campaign] Sending email to ${lead.email} via ${account.email}`);
                     // Generate email content
                     let subject: string;
                     let body: string;
@@ -155,8 +166,10 @@ export default inngest.createFunction(
                         })
                         .eq("id", campaignLead.id);
 
+                    console.log(`[Send Campaign] Email sent successfully to ${lead.email}`);
+
                 } catch (error: any) {
-                    console.error(`Failed to send email to ${lead.email}:`, error);
+                    console.error(`[Send Campaign] Failed to send email to ${lead.email}:`, error);
                     await supabase
                         .from("campaign_leads")
                         .update({
@@ -173,12 +186,14 @@ export default inngest.createFunction(
 
         // Step 6: Update campaign status to completed
         await step.run("update-status-completed", async () => {
+            console.log(`[Send Campaign] Marking campaign ${campaignId} as completed`);
             await supabase
                 .from("campaigns")
                 .update({ status: "completed" })
                 .eq("id", campaignId);
         });
 
+        console.log(`[Send Campaign] Campaign execution finished: ${campaignId}`);
         return { success: true, emailsSent: campaignLeads.length };
     }
 );

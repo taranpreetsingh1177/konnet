@@ -29,9 +29,11 @@ export default inngest.createFunction(
     { event: "company/enrich" },
     async ({ event, step }) => {
         const { companyId } = event.data;
+        console.log(`[Enrich Company] Starting enrichment for company: ${companyId}`);
 
         // Step 1: Fetch company details
         const company = await step.run("fetch-company", async () => {
+            console.log(`[Enrich Company] Fetching company details: ${companyId}`);
             const { data, error } = await supabase
                 .from("companies")
                 .select("*")
@@ -39,6 +41,7 @@ export default inngest.createFunction(
                 .single();
 
             if (error || !data) {
+                console.error(`[Enrich Company] Company not found: ${companyId}`, error);
                 throw new NonRetriableError(`Company not found: ${companyId}`);
             }
             return data;
@@ -46,6 +49,7 @@ export default inngest.createFunction(
 
         // Step 2: Update status to processing
         await step.run("update-status-processing", async () => {
+            console.log(`[Enrich Company] Updating status to processing: ${companyId}`);
             await supabase
                 .from("companies")
                 .update({
@@ -59,19 +63,21 @@ export default inngest.createFunction(
 
         // Step 3: Generate email template with Google Search grounding (combines research + generation)
         const emailData = await step.run("generate-email-template", async () => {
+            console.log(`[Enrich Company] Generating email template for: ${company.name}`);
             try {
                 return await generateCompanyEmailTemplate({
                     name: company.name,
                     domain: company.domain,
                 });
             } catch (error) {
-                console.error("Error generating email template:", error);
+                console.error("[Enrich Company] Error generating email template:", error);
                 throw error;
             }
         });
 
         // Step 4: Update company with enriched data
         await step.run("update-company-data", async () => {
+            console.log(`[Enrich Company] Updating company with enriched data: ${companyId}`);
             await supabase
                 .from("companies")
                 .update({
@@ -82,6 +88,7 @@ export default inngest.createFunction(
                 .eq("id", companyId);
         });
 
+        console.log(`[Enrich Company] Completed enrichment for company: ${companyId}`);
         return { success: true, companyId };
     }
 );
