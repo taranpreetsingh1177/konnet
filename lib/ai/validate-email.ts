@@ -9,9 +9,33 @@ if (!process.env.GOOGLE_VERTEX_LOCATION) {
   throw new Error("GOOGLE_VERTEX_LOCATION environment variable is required");
 }
 
+// Parse Google Auth credentials if provided (for deployment)
+let googleAuthOptions: any = undefined;
+if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+  try {
+    const creds = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+    console.log(
+      "[Vertex AI Validate] Using credentials from GOOGLE_APPLICATION_CREDENTIALS_JSON",
+    );
+    console.log("[Vertex AI Validate] Credential type:", creds.type);
+    googleAuthOptions = { credentials: creds };
+  } catch (error) {
+    console.error(
+      "[Vertex AI Validate] Failed to parse GOOGLE_APPLICATION_CREDENTIALS_JSON:",
+      error,
+    );
+    throw error;
+  }
+} else {
+  console.log(
+    "[Vertex AI Validate] Using Application Default Credentials (ADC)",
+  );
+}
+
 const vertex = createVertex({
   project: process.env.GOOGLE_VERTEX_PROJECT,
   location: process.env.GOOGLE_VERTEX_LOCATION,
+  googleAuthOptions,
 });
 
 export async function validateEmailContent(
