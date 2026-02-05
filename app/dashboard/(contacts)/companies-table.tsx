@@ -56,6 +56,16 @@ export function CompaniesTable({ onViewTemplate }: CompaniesTableProps) {
         }
     })
 
+    const retryMutation = trpc.companies.retryFailedEnrichment.useMutation({
+        onSuccess: (data) => {
+            alert(`Retrying enrichment for ${data.count} companies`)
+            refetch()
+        },
+        onError: (error) => {
+            alert(`Failed to retry: ${error.message}`)
+        }
+    })
+
     const filteredCompanies = companies.filter((company: Company) => {
         const query = searchQuery.toLowerCase()
         return company.name.toLowerCase().includes(query) ||
@@ -122,6 +132,18 @@ export function CompaniesTable({ onViewTemplate }: CompaniesTableProps) {
                         >
                             <Trash2 className="w-4 h-4 mr-2" />
                             Delete ({selectedRows.size})
+                        </Button>
+                    )}
+                    {companies.some((c: Company) => c.enrichment_status === 'failed') && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => retryMutation.mutate()}
+                            disabled={retryMutation.isPending}
+                            className="h-9 text-blue-600 border-blue-200 hover:bg-blue-50"
+                        >
+                            <Clock className={`w-4 h-4 mr-2 ${retryMutation.isPending ? 'animate-spin' : ''}`} />
+                            Retry Failed Analysis
                         </Button>
                     )}
                 </div>

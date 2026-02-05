@@ -16,13 +16,13 @@ export async function GET(request: NextRequest) {
         // or await it if we want to be sure. Since this is an image load, promptness matters less than reliability.
         try {
             await supabase
-                .from("campaign_leads")
+                .from("leads")
                 .update({
-                    status: "opened",
+                    campaign_status: "opened",
                     opened_at: new Date().toISOString()
                 })
                 .eq("id", leadId)
-                .is("opened_at", null); // Only update if not already opened (optional, or update last_opened_at)
+                .is("opened_at", null); // Only update if not already opened
         } catch (error) {
             console.error("Error tracking open:", error);
         }

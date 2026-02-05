@@ -7,9 +7,10 @@ import { cn } from "@/lib/utils"
 
 const navItems = [
     {
-        name: 'Leads',
+        name: 'Contacts',
         href: '/dashboard/leads',
         icon: Users,
+        matches: ['/dashboard/leads', '/dashboard/companies']
     },
     {
         name: 'Credentials',
@@ -49,7 +50,9 @@ export function Sidebar({ onLogout }: SidebarProps) {
             <nav className="flex-1 px-3 py-2">
                 <div className="space-y-1">
                     {navItems.map((item) => {
-                        const isActive = pathname.startsWith(item.href)
+                        const isActive = (item as any).matches
+                            ? (item as any).matches.some((m: string) => pathname.startsWith(m))
+                            : pathname.startsWith(item.href)
                         return (
                             <Link
                                 key={item.href}

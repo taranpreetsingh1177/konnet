@@ -1,15 +1,9 @@
-import { router, publicProcedure } from '../trpc';
+import { router, protectedProcedure, publicProcedure } from '../trpc';
 import { z } from 'zod';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 export const credentialsRouter = router({
-    getAll: publicProcedure.query(async () => {
-        const { data } = await supabase
+    getAll: publicProcedure.query(async ({ ctx }) => {
+        const { data } = await ctx.db
             .from('accounts')
             .select('*')
             .order('created_at', { ascending: false });
@@ -19,8 +13,8 @@ export const credentialsRouter = router({
 
     delete: publicProcedure
         .input(z.object({ id: z.string() }))
-        .mutation(async ({ input }) => {
-            const { error } = await supabase
+        .mutation(async ({ ctx, input }) => {
+            const { error } = await ctx.db
                 .from('accounts')
                 .delete()
                 .eq('id', input.id);
@@ -31,8 +25,8 @@ export const credentialsRouter = router({
 
     bulkDelete: publicProcedure
         .input(z.object({ ids: z.array(z.string()) }))
-        .mutation(async ({ input }) => {
-            const { error } = await supabase
+        .mutation(async ({ ctx, input }) => {
+            const { error } = await ctx.db
                 .from('accounts')
                 .delete()
                 .in('id', input.ids);
