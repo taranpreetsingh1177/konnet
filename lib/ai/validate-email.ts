@@ -1,22 +1,25 @@
-import { generateText } from 'ai';
-import { createVertex } from '@ai-sdk/google-vertex';
+import { generateText } from "ai";
+import { createVertex } from "@ai-sdk/google-vertex";
 
-if (!process.env.GOOGLE_CLOUD_PROJECT) {
-    throw new Error('GOOGLE_CLOUD_PROJECT environment variable is required');
+if (!process.env.GOOGLE_VERTEX_PROJECT) {
+  throw new Error("GOOGLE_VERTEX_PROJECT environment variable is required");
 }
 
-if (!process.env.GOOGLE_CLOUD_LOCATION) {
-    throw new Error('GOOGLE_CLOUD_LOCATION environment variable is required');
+if (!process.env.GOOGLE_VERTEX_LOCATION) {
+  throw new Error("GOOGLE_VERTEX_LOCATION environment variable is required");
 }
 
 const vertex = createVertex({
-    project: process.env.GOOGLE_CLOUD_PROJECT,
-    location: process.env.GOOGLE_CLOUD_LOCATION,
+  project: process.env.GOOGLE_VERTEX_PROJECT,
+  location: process.env.GOOGLE_VERTEX_LOCATION,
 });
 
-export async function validateEmailContent(subject: string, body: string): Promise<{ isValid: boolean; reason?: string }> {
-    try {
-        const prompt = `You are a Quality Assurance AI for an email automation system.
+export async function validateEmailContent(
+  subject: string,
+  body: string,
+): Promise<{ isValid: boolean; reason?: string }> {
+  try {
+    const prompt = `You are a Quality Assurance AI for an email automation system.
 Your task is to validate the following cold email content.
 
 Check for these CRITICAL FAILURES:
@@ -37,21 +40,20 @@ Structure:
   "reason": "short explanation if valid is false, otherwise null"
 }`;
 
-        const response = await generateText({
-            model: vertex('gemini-2.5-flash-lite'),
-            prompt: prompt,
-        });
+    const response = await generateText({
+      model: vertex("gemini-2.5-flash-lite"),
+      prompt: prompt,
+    });
 
-        const text = response.text.replace(/```json\n?|\n?```/g, '').trim();
-        const result = JSON.parse(text);
-        return {
-            isValid: !!result.isValid,
-            reason: result.reason || undefined
-        };
+    const text = response.text.replace(/```json\n?|\n?```/g, "").trim();
+    const result = JSON.parse(text);
+    return {
+      isValid: !!result.isValid,
+      reason: result.reason || undefined,
+    };
+  } catch (error) {
+    console.error("Email validation failed:", error);
 
-    } catch (error) {
-        console.error("Email validation failed:", error);
-
-        return { isValid: true };
-    }
+    return { isValid: true };
+  }
 }
