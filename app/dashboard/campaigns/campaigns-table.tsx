@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import {
     Mail, Users, Clock, CheckCircle, Loader2, Play,
     Download, Search, Trash2, MoreHorizontal,
-    ChevronDown, Filter, ArrowUpDown, Plus, Calendar, AlertCircle
+    ChevronDown, Filter, ArrowUpDown, Plus, Calendar, AlertCircle, StopCircle
 } from "lucide-react"
 import {
     DropdownMenu,
@@ -37,11 +37,13 @@ interface Campaign {
         account_id: string
         accounts: { email: string } | null
     }>
-    campaign_leads: Array<{
+    leads: Array<{
         id: string
-        status: string
-        lead_id: string
-        leads: { email: string; name: string | null } | null
+        email: string
+        name: string | null
+        campaign_status: string
+        sent_at: string | null
+        opened_at: string | null
     }>
 }
 
@@ -50,6 +52,7 @@ const statusConfig: Record<string, { label: string; bgColor: string; textColor: 
     scheduled: { label: 'Scheduled', bgColor: 'bg-blue-50', textColor: 'text-blue-600', icon: Clock },
     running: { label: 'Running', bgColor: 'bg-amber-50', textColor: 'text-amber-600', icon: Loader2 },
     completed: { label: 'Completed', bgColor: 'bg-green-50', textColor: 'text-green-600', icon: CheckCircle },
+    cancelled: { label: 'Cancelled', bgColor: 'bg-red-50', textColor: 'text-red-600', icon: StopCircle },
 }
 
 type SortField = 'name' | 'status' | 'created_at'
@@ -75,6 +78,9 @@ export function CampaignsTable({ accounts, companies }: CampaignsTableProps) {
 
     const { data: campaigns = [], isLoading, refetch } = trpc.campaigns.getAll.useQuery()
     const deleteMutation = trpc.campaigns.delete.useMutation({
+        onSuccess: () => refetch()
+    })
+    const cancelMutation = trpc.campaigns.cancel.useMutation({
         onSuccess: () => refetch()
     })
     const bulkDeleteMutation = trpc.campaigns.bulkDelete.useMutation({
@@ -149,6 +155,10 @@ export function CampaignsTable({ accounts, companies }: CampaignsTableProps) {
 
     const handleDelete = (id: string) => {
         deleteMutation.mutate({ id })
+    }
+
+    const handleCancel = (id: string) => {
+        cancelMutation.mutate({ id })
     }
 
     const handleBulkDelete = () => {
@@ -371,9 +381,9 @@ export function CampaignsTable({ accounts, companies }: CampaignsTableProps) {
                         ) : (
                             filteredAndSortedCampaigns.map((campaign: Campaign, index: number) => {
                                 const StatusIcon = statusConfig[campaign.status]?.icon || Clock
-                                const sentCount = campaign.campaign_leads?.filter((l) => l.status === 'sent').length || 0
-                                const totalCount = campaign.campaign_leads?.length || 0
-                                const failedCount = campaign.campaign_leads?.filter((l) => l.status === 'failed').length || 0
+                                const sentCount = campaign.leads?.filter((l) => l.campaign_status === 'sent' || l.campaign_status === 'opened').length || 0
+                                const totalCount = campaign.leads?.length || 0
+                                const failedCount = campaign.leads?.filter((l) => l.campaign_status === 'failed').length || 0
                                 const progress = totalCount > 0 ? (sentCount / totalCount) * 100 : 0
 
                                 return (
@@ -464,13 +474,25 @@ export function CampaignsTable({ accounts, companies }: CampaignsTableProps) {
                                                             <DropdownMenuSeparator />
                                                         </>
                                                     )}
-                                                    <DropdownMenuItem
-                                                        onClick={() => handleDelete(campaign.id)}
-                                                        className="text-red-600"
-                                                    >
-                                                        <Trash2 className="w-4 h-4 mr-2" />
-                                                        Delete
-                                                    </DropdownMenuItem>
+                                                    {/* Cancel Option for Running/Scheduled */}
+                                                    {['running', 'scheduled'].includes(campaign.status) ? (
+                                                        <DropdownMenuItem
+                                                            onClick={() => handleCancel(campaign.id)}
+                                                            className="text-red-600"
+                                                        >
+                                                            <StopCircle className="w-4 h-4 mr-2" />
+                                                            Cancel
+                                                        </DropdownMenuItem>
+                                                    ) : (
+                                                        /* Delete Option for Draft/Completed/Failed/Cancelled */
+                                                        <DropdownMenuItem
+                                                            onClick={() => handleDelete(campaign.id)}
+                                                            className="text-red-600"
+                                                        >
+                                                            <Trash2 className="w-4 h-4 mr-2" />
+                                                            Delete
+                                                        </DropdownMenuItem>
+                                                    )}
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         </td>

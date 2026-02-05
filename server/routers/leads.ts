@@ -1,16 +1,9 @@
-import { router, publicProcedure } from '../trpc';
+import { router, protectedProcedure } from '../trpc';
 import { z } from 'zod';
-import { createClient } from '@supabase/supabase-js';
-
-// Create admin Supabase client for server-side operations
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 export const leadsRouter = router({
-    getAll: publicProcedure.query(async () => {
-        const { data } = await supabase
+    getAll: protectedProcedure.query(async ({ ctx }) => {
+        const { data } = await ctx.db
             .from('leads')
             .select(`
                 *,
@@ -34,10 +27,10 @@ export const leadsRouter = router({
         return data || [];
     }),
 
-    getById: publicProcedure
+    getById: protectedProcedure
         .input(z.object({ id: z.string() }))
-        .query(async ({ input }) => {
-            const { data } = await supabase
+        .query(async ({ ctx, input }) => {
+            const { data } = await ctx.db
                 .from('leads')
                 .select('*')
                 .eq('id', input.id)
@@ -46,7 +39,7 @@ export const leadsRouter = router({
             return data;
         }),
 
-    update: publicProcedure
+    update: protectedProcedure
         .input(z.object({
             id: z.string(),
             email: z.string().optional(),
@@ -55,9 +48,9 @@ export const leadsRouter = router({
             role: z.string().nullable().optional(),
             linkedin_url: z.string().nullable().optional(),
         }))
-        .mutation(async ({ input }) => {
+        .mutation(async ({ ctx, input }) => {
             const { id, ...updates } = input;
-            const { error } = await supabase
+            const { error } = await ctx.db
                 .from('leads')
                 .update(updates)
                 .eq('id', id);
@@ -66,10 +59,10 @@ export const leadsRouter = router({
             return { success: true };
         }),
 
-    delete: publicProcedure
+    delete: protectedProcedure
         .input(z.object({ id: z.string() }))
-        .mutation(async ({ input }) => {
-            const { error } = await supabase
+        .mutation(async ({ ctx, input }) => {
+            const { error } = await ctx.db
                 .from('leads')
                 .delete()
                 .eq('id', input.id);
@@ -78,10 +71,10 @@ export const leadsRouter = router({
             return { success: true };
         }),
 
-    bulkDelete: publicProcedure
+    bulkDelete: protectedProcedure
         .input(z.object({ ids: z.array(z.string()) }))
-        .mutation(async ({ input }) => {
-            const { error } = await supabase
+        .mutation(async ({ ctx, input }) => {
+            const { error } = await ctx.db
                 .from('leads')
                 .delete()
                 .in('id', input.ids);

@@ -1,7 +1,4 @@
-import sendCampaign from './functions/campaign/send-campaign';
-import enrichCompany from './functions/company/enrich-company';
+import sendCampaign from "./functions/campaign/send-campaign";
+import enrichCompany from "./functions/company/enrich-company";
 
-export default [
-    sendCampaign,
-    enrichCompany,
-];
+export default [sendCampaign, enrichCompany];

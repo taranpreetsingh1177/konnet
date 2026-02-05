@@ -1,15 +1,10 @@
-import { router, publicProcedure } from '../trpc';
+import { router, protectedProcedure } from '../trpc';
 import { z } from 'zod';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { cancelCampaign } from '@/app/dashboard/campaigns/actions';
 
 export const campaignsRouter = router({
-    getAll: publicProcedure.query(async () => {
-        const { data } = await supabase
+    getAll: protectedProcedure.query(async ({ ctx }) => {
+        const { data } = await ctx.db
             .from('campaigns')
             .select(`
                 *,
@@ -17,11 +12,13 @@ export const campaignsRouter = router({
                     account_id,
                     accounts (email)
                 ),
-                campaign_leads (
+                leads (
                     id,
-                    status,
-                    lead_id,
-                    leads (email, name)
+                    email,
+                    name,
+                    campaign_status,
+                    sent_at,
+                    opened_at
                 )
             `)
             .order('created_at', { ascending: false });
@@ -29,10 +26,10 @@ export const campaignsRouter = router({
         return data || [];
     }),
 
-    delete: publicProcedure
+    delete: protectedProcedure
         .input(z.object({ id: z.string() }))
-        .mutation(async ({ input }) => {
-            const { error } = await supabase
+        .mutation(async ({ ctx, input }) => {
+            const { error } = await ctx.db
                 .from('campaigns')
                 .delete()
                 .eq('id', input.id);
@@ -41,15 +38,26 @@ export const campaignsRouter = router({
             return { success: true };
         }),
 
-    bulkDelete: publicProcedure
+    bulkDelete: protectedProcedure
         .input(z.object({ ids: z.array(z.string()) }))
-        .mutation(async ({ input }) => {
-            const { error } = await supabase
+        .mutation(async ({ ctx, input }) => {
+            const { error } = await ctx.db
                 .from('campaigns')
                 .delete()
                 .in('id', input.ids);
 
             if (error) throw new Error(error.message);
             return { success: true };
+        }),
+
+    cancel: protectedProcedure
+        .input(z.object({ id: z.string() }))
+        .mutation(async ({ ctx, input }) => {
+            // Use server action for campaign cancellation
+            const result = await cancelCampaign(input.id);
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to cancel campaign');
+            }
+            return result;
         }),
 });

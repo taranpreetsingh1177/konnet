@@ -1,15 +1,11 @@
-import { router, publicProcedure } from '../trpc';
+import { router, protectedProcedure } from '../trpc';
 import { z } from 'zod';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+import { inngest } from '@/lib/inngest/client';
 
 export const companiesRouter = router({
     // Get all companies
-    getAll: publicProcedure.query(async () => {
-        const { data, error } = await supabase
+    getAll: protectedProcedure.query(async ({ ctx }) => {
+        const { data, error } = await ctx.db
             .from('companies')
             .select(`
                 *,
@@ -22,10 +18,10 @@ export const companiesRouter = router({
     }),
 
     // Get company by ID
-    getById: publicProcedure
+    getById: protectedProcedure
         .input(z.object({ id: z.string() }))
-        .query(async ({ input }) => {
-            const { data, error } = await supabase
+        .query(async ({ ctx, input }) => {
+            const { data, error } = await ctx.db
                 .from('companies')
                 .select(`
                     *,
@@ -39,10 +35,10 @@ export const companiesRouter = router({
         }),
 
     // Get company by domain
-    getByDomain: publicProcedure
+    getByDomain: protectedProcedure
         .input(z.object({ domain: z.string() }))
-        .query(async ({ input }) => {
-            const { data, error } = await supabase
+        .query(async ({ ctx, input }) => {
+            const { data, error } = await ctx.db
                 .from('companies')
                 .select('*')
                 .eq('domain', input.domain)
@@ -53,7 +49,7 @@ export const companiesRouter = router({
         }),
 
     // Update company
-    update: publicProcedure
+    update: protectedProcedure
         .input(z.object({
             id: z.string(),
             name: z.string().optional(),
@@ -63,9 +59,9 @@ export const companiesRouter = router({
             enrichment_status: z.enum(['pending', 'processing', 'completed', 'failed']).optional(),
             enrichment_error: z.string().nullable().optional(),
         }))
-        .mutation(async ({ input }) => {
+        .mutation(async ({ ctx, input }) => {
             const { id, ...updateData } = input;
-            const { data, error } = await supabase
+            const { data, error } = await ctx.db
                 .from('companies')
                 .update(updateData)
                 .eq('id', id)
@@ -77,10 +73,10 @@ export const companiesRouter = router({
         }),
 
     // Delete company
-    delete: publicProcedure
+    delete: protectedProcedure
         .input(z.object({ id: z.string() }))
-        .mutation(async ({ input }) => {
-            const { error } = await supabase
+        .mutation(async ({ ctx, input }) => {
+            const { error } = await ctx.db
                 .from('companies')
                 .delete()
                 .eq('id', input.id);
@@ -90,10 +86,10 @@ export const companiesRouter = router({
         }),
 
     // Bulk delete companies
-    bulkDelete: publicProcedure
+    bulkDelete: protectedProcedure
         .input(z.object({ ids: z.array(z.string()) }))
-        .mutation(async ({ input }) => {
-            const { error } = await supabase
+        .mutation(async ({ ctx, input }) => {
+            const { error } = await ctx.db
                 .from('companies')
                 .delete()
                 .in('id', input.ids);
@@ -103,14 +99,14 @@ export const companiesRouter = router({
         }),
 
     // Create or get company (used during CSV upload)
-    createOrGet: publicProcedure
+    createOrGet: protectedProcedure
         .input(z.object({
             domain: z.string(),
             name: z.string(),
         }))
-        .mutation(async ({ input }) => {
+        .mutation(async ({ ctx, input }) => {
             // Try to get existing company
-            const { data: existing } = await supabase
+            const { data: existing } = await ctx.db
                 .from('companies')
                 .select('*')
                 .eq('domain', input.domain)
@@ -121,7 +117,7 @@ export const companiesRouter = router({
             }
 
             // Create new company
-            const { data, error } = await supabase
+            const { data, error } = await ctx.db
                 .from('companies')
                 .insert({
                     domain: input.domain,
@@ -133,5 +129,43 @@ export const companiesRouter = router({
 
             if (error) throw error;
             return data;
+        }),
+
+    // Retry enrichment for all failed companies
+    retryFailedEnrichment: protectedProcedure
+        .mutation(async ({ ctx }) => {
+            // 1. Get all failed companies
+            const { data: failedCompanies, error: fetchError } = await ctx.db
+                .from('companies')
+                .select('id')
+                .eq('enrichment_status', 'failed');
+
+            if (fetchError) throw fetchError;
+            if (!failedCompanies || failedCompanies.length === 0) {
+                return { count: 0 };
+            }
+
+            const ids = failedCompanies.map(c => c.id);
+
+            // 2. Reset status to pending
+            const { error: updateError } = await ctx.db
+                .from('companies')
+                .update({
+                    enrichment_status: 'pending',
+                    enrichment_error: null
+                })
+                .in('id', ids);
+
+            if (updateError) throw updateError;
+
+            // 3. Trigger Inngest events
+            const events = ids.map(id => ({
+                name: 'company/enrich',
+                data: { companyId: id }
+            }));
+
+            await inngest.send(events);
+
+            return { count: ids.length };
         }),
 });
