@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Users, Mail, Settings, Key, LogOut } from "lucide-react"
+import { Users, Mail, Settings, Key, LogOut, Building2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
@@ -10,7 +10,11 @@ const navItems = [
         name: 'Contacts',
         href: '/dashboard/leads',
         icon: Users,
-        matches: ['/dashboard/leads', '/dashboard/companies']
+    },
+    {
+        name: 'Companies',
+        href: '/dashboard/companies',
+        icon: Building2,
     },
     {
         name: 'Credentials',

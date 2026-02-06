@@ -1,13 +1,13 @@
-import { router, publicProcedure } from '../trpc';
-import { leadsRouter } from './leads';
-import { campaignsRouter } from './campaigns';
+// Base router
+import { router } from '../trpc';
+
+// Feature routers
+import { campaignsRouter } from '@/features/campaigns/routers/campaigns';
 import { credentialsRouter } from './credentials';
-import { companiesRouter } from './companies';
+import { companiesRouter } from '@/features/(contact)/companies/routers/companies';
+import { leadsRouter } from '@/features/(contact)/leads/routers/leads';
 
 export const appRouter = router({
-    health: publicProcedure.query(() => {
-        return 'ok';
-    }),
     leads: leadsRouter,
     campaigns: campaignsRouter,
     credentials: credentialsRouter,
