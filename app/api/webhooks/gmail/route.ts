@@ -25,6 +25,11 @@ export async function POST(req: NextRequest) {
         const dataString = Buffer.from(message.data, "base64").toString("utf-8");
         const data = JSON.parse(dataString);
 
+        console.log("--- Gmail Webhook Received ---");
+        console.log("Message ID:", message.messageId);
+        console.log("Publish Time:", message.publishTime);
+        console.log("Decoded Data:", JSON.stringify(data, null, 2));
+
         // Should contain emailAddress and historyId
         const { emailAddress, historyId } = data;
 
