@@ -37,5 +37,5 @@ export async function signInWithGoogle() {
     return { error: error.message };
   }
 
-  return { url: data.url };
+  return { url: data.url, success: true };
 }
