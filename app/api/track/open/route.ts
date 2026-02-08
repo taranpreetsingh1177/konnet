@@ -1,5 +1,4 @@
-// NO CHANGE - Tool usage for search
-
+import { createClient } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 
 // Create a Supabase client with the service role key to bypass RLS
