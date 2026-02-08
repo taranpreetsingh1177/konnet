@@ -42,6 +42,7 @@ interface Campaign {
         status: string
         sent_at: string | null
         opened_at: string | null
+        error: string | null
     }>
 }
 
@@ -434,7 +435,10 @@ export function CampaignsTable({ accounts, companies }: CampaignsTableProps) {
                                                     {sentCount}/{totalCount}
                                                 </span>
                                                 {failedCount > 0 && (
-                                                    <span className="text-xs text-red-500 flex items-center gap-0.5">
+                                                    <span
+                                                        className="text-xs text-red-500 flex items-center gap-0.5 cursor-help"
+                                                        title={Array.from(new Set(campaign.campaign_leads?.filter(l => l.status === 'failed' && l.error).map(l => l.error))).join('\n')}
+                                                    >
                                                         <AlertCircle className="w-3 h-3" />
                                                         {failedCount}
                                                     </span>

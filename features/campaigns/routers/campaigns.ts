@@ -16,7 +16,8 @@ export const campaignsRouter = router({
                     id,
                     status,
                     sent_at,
-                    opened_at
+                    opened_at,
+                    error
                 )
             `)
             .order('created_at', { ascending: false });
