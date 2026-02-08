@@ -67,18 +67,16 @@ function AuthForm() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
-      <FormComponent
-        title={<p className="text-md">Konnet</p>}
-        schema={authSchema}
-        fields={fields}
-        buttons={buttons}
-        onSubmit={handleSubmit}
-        loading={loading}
-        error={error}
-        description="A secure link will be sent to your inbox."
-      />
-    </div>
+    <FormComponent
+      title={<p className="text-md">Konnet</p>}
+      schema={authSchema}
+      fields={fields}
+      buttons={buttons}
+      onSubmit={handleSubmit}
+      loading={loading}
+      error={error}
+      description="A secure link will be sent to your inbox."
+    />
   );
 }
 
