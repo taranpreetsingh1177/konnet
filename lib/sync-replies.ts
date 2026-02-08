@@ -15,14 +15,13 @@ export async function syncGmailReplies(userId: string) {
     console.log(`Syncing replies for user: ${userId}`);
     const gmail = await getGmailClient(userId);
 
-    // 1. Search for messages received in the last 5 minutes (to be safe against latency)
-    // Gmail search query: "after:X" (X is seconds since epoch)
-    const fiveMinutesAgo = Math.floor(Date.now() / 1000) - (5 * 60);
-    const q = `after:${fiveMinutesAgo}`;
-
+    // 1. Fetch latest 20 messages from Inbox.
+    // We avoid using 'after:X' query because of potential Gmail search index latency.
+    // Getting the latest raw list is more reliable for immediate webhook reactions.
     const res = await gmail.users.messages.list({
         userId: 'me',
-        q: q,
+        labelIds: ['INBOX'],
+        maxResults: 20,
     });
 
     const messages = res.data.messages;
