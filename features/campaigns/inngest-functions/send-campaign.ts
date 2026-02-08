@@ -98,7 +98,6 @@ export default inngest.createFunction(
             email,
             name,
             role,
-            company,
             custom_fields,
             companies (
               name,
