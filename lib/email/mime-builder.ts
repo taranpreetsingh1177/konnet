@@ -14,7 +14,7 @@ export function createEmailWithAttachment(
   const message = [
     `From: ${from}`,
     `To: ${to}`,
-    `Subject: ${subject}`,
+    `Subject: ${/[^\0-\x7F]/.test(subject) ? '=?utf-8?B?' + Buffer.from(subject, 'utf-8').toString('base64') + '?=' : subject}`,
     `MIME-Version: 1.0`,
     `Content-Type: multipart/mixed; boundary="${boundary}"`,
     "",

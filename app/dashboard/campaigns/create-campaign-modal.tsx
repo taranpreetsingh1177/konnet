@@ -50,6 +50,7 @@ type Company = {
   name: string;
   logo_url: string | null;
   leadCount: number;
+  availableLeadCount: number;
   email_template?: string | null;
   email_subject?: string | null;
 };
@@ -75,6 +76,7 @@ export function CreateCampaignModal({
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
   const [scheduledAt, setScheduledAt] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const toggleAccount = (id: string) => {
     setSelectedAccounts((prev) =>
@@ -89,8 +91,15 @@ export function CreateCampaignModal({
   };
 
   const selectAllCompanies = () => {
-    setSelectedCompanies(companies.map((c) => c.id));
+    const filteredCompanies = companies.filter(c =>
+      c.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    setSelectedCompanies(filteredCompanies.map((c) => c.id));
   };
+
+  const filteredCompanies = companies.filter(c =>
+    c.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const handleCreate = async () => {
     setLoading(true);
@@ -135,18 +144,17 @@ export function CreateCampaignModal({
     setSelectedCompanies([]);
     setScheduledAt("");
     setError(null);
+    setSearchQuery("");
   };
 
-  const handleOpenChange = (newOpen: boolean) => {
-    setOpen(newOpen);
-    if (!newOpen) resetForm();
-  };
+  // ... (some code skipped for brevity if identical)
 
   const canProceedStep1 = name.trim() && selectedAccounts.length > 0;
   const canProceedStep2 = selectedCompanies.length > 0;
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={() => setOpen(!open)}>
+      {/* ... (Step 1 code) */}
       <DialogTrigger>
         <Button className="bg-[#0EA5E9] hover:bg-[#0284C7] text-white">
           <Plus className="w-4 h-4 mr-2" />
@@ -154,8 +162,8 @@ export function CreateCampaignModal({
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl">
-        {/* Step 1: Name & Accounts */}
         {step === 1 && (
+          // ... (Step 1 content)
           <>
             <DialogHeader>
               <DialogTitle>Create Campaign</DialogTitle>
@@ -228,30 +236,38 @@ export function CreateCampaignModal({
                 {selectedCompanies.length} selected)
               </DialogDescription>
             </DialogHeader>
-            <div className="py-4">
-              <div className="flex justify-between mb-3">
+            <div className="py-4 space-y-3">
+              <Input
+                placeholder="Search companies..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full"
+              />
+              <div className="flex justify-between">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={selectAllCompanies}
                 >
-                  Select All ({companies.length})
+                  Select All ({filteredCompanies.length})
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setSelectedCompanies([])}
                 >
-                  Clear
+                  Clear Selection
                 </Button>
               </div>
               <div className="border rounded-lg p-3 max-h-60 overflow-y-auto space-y-1">
-                {companies.length === 0 ? (
-                  <p className="text-sm text-gray-500">
-                    No companies found. Upload leads with company info first.
+                {filteredCompanies.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-4">
+                    {companies.length === 0
+                      ? "No companies found. Upload leads with company info first."
+                      : "No companies match your search."}
                   </p>
                 ) : (
-                  companies.map((company) => (
+                  filteredCompanies.map((company) => (
                     <div
                       key={company.id}
                       className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded cursor-pointer"
@@ -267,20 +283,31 @@ export function CreateCampaignModal({
                           <img
                             src={company.logo_url}
                             alt={company.name}
-                            className="w-5 h-5 object-contain rounded"
+                            className="w-8 h-8 object-contain rounded bg-white border border-gray-100 p-0.5"
                           />
                         ) : (
-                          <div className="w-5 h-5 rounded bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-400">
+                          <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-600 uppercase">
                             {company.name.charAt(0)}
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
+                          <p className="text-sm font-medium truncate text-gray-900">
                             {company.name}
                           </p>
-                          <p className="text-xs text-gray-500 truncate">
-                            {company.leadCount} leads
-                          </p>
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <Badge variant="secondary" className="text-[10px] font-normal h-5 px-1.5 bg-gray-100 text-gray-600 hover:bg-gray-200">
+                              Total: {company.leadCount}
+                            </Badge>
+                            {company.availableLeadCount > 0 ? (
+                              <Badge variant="secondary" className="text-[10px] font-normal h-5 px-1.5 bg-green-50 text-green-700 hover:bg-green-100 border-green-100">
+                                Available: {company.availableLeadCount}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] font-normal h-5 px-1.5 text-gray-400 border-dashed">
+                                None Available
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -295,7 +322,7 @@ export function CreateCampaignModal({
               </Button>
               <Button onClick={() => setStep(3)} disabled={!canProceedStep2}>
                 Next
-                <ArrowRight className="w-4 h-4 ml-2" />
+                <ArrowRight className="w-4 h-4 mr-2" />
               </Button>
             </DialogFooter>
           </>

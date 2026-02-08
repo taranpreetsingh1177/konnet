@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { Sidebar } from "@/components/sidebar"
+import { SidebarInset } from "@/components/ui/sidebar"
 
 async function handleLogout() {
     'use server'
@@ -22,13 +23,12 @@ export default async function DashboardLayout({
     }
 
     return (
-        <div className="flex h-screen bg-white">
+        <div className="flex min-h-screen w-full">
             <Sidebar onLogout={handleLogout} />
-
-            {/* Main Content */}
-            <main className="flex-1 overflow-hidden bg-white">
+            <SidebarInset>
                 {children}
-            </main>
+            </SidebarInset>
         </div>
     )
 }
+

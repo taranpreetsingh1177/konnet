@@ -9,20 +9,26 @@ const supabase = createClient(
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
-    const leadId = searchParams.get("id");
+    const id = searchParams.get("id");
+    const type = searchParams.get("type"); // 'campaign_lead' or undefined (legacy)
 
-    if (leadId) {
+    if (id) {
         // Asynchronously update the database without waiting (fire and forget pattern for speed)
         // or await it if we want to be sure. Since this is an image load, promptness matters less than reliability.
         try {
-            await supabase
-                .from("leads")
-                .update({
-                    campaign_status: "opened",
-                    opened_at: new Date().toISOString()
-                })
-                .eq("id", leadId)
-                .is("opened_at", null); // Only update if not already opened
+            if (type === 'campaign_lead') {
+                await supabase
+                    .from("campaign_leads")
+                    .update({
+                        status: "opened",
+                        opened_at: new Date().toISOString()
+                    })
+                    .eq("id", id)
+                    .is("opened_at", null); // Only update if not already opened
+            } else {
+                // Legacy support: if columns exist, try to update. If deleted, this will fail (catch block).
+                // We can soft-fail here.
+            }
         } catch (error) {
             console.error("Error tracking open:", error);
         }

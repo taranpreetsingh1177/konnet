@@ -1,6 +1,6 @@
 'use client'
 
-import { LeadsTable } from "../leads-table"
+import { LeadsTable } from "@/features/(contact)/leads/components/leads-table"
 
 export default function LeadsPage() {
     return <LeadsTable />
