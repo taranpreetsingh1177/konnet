@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -9,74 +9,46 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Mail } from "lucide-react";
-import { z } from "zod";
-import { FormComponent } from "@/components/FormComponent";
-import { sendMagicLink } from "../actions/ServerActions";
+import { signInWithGoogle } from "../actions/ServerActions";
+import { GoogleIcon } from "hugeicons-react";
 
 function AuthForm() {
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
-  const authSchema = z.object({
-    email: z.string().email("Invalid email address"),
-  });
-
-  const fields = [
-    {
-      name: "email",
-      label: "Email",
-      type: "email",
-      placeholder: "m@example.com",
-    },
-  ];
-
-  const buttons = [
-    {
-      label: "Send Magic Link",
-      variant: "default" as const,
-      loading: loading,
-      loadingText: "Sending link...",
-    },
-  ];
-
-  const handleSubmit = async (data: Record<string, unknown>) => {
+  const handleGoogleSignIn = () => {
     setError(null);
-    setSuccess(null);
-    setLoading(true);
-
-    try {
-      const formData = new FormData();
-      formData.append("email", data.email as string);
-
-      const result = await sendMagicLink(formData);
-
+    startTransition(async () => {
+      const result = await signInWithGoogle();
       if (result.error) {
         setError(result.error);
-        setLoading(false);
-        return;
+      } else if (result.url) {
+        window.location.href = result.url;
       }
-
-      setSuccess(result.success || "Check your email for the magic link.");
-      setLoading(false);
-    } catch {
-      setError("An unexpected error occurred");
-      setLoading(false);
-    }
+    });
   };
 
   return (
-    <FormComponent
-      title={<p className="text-md">Konnet</p>}
-      schema={authSchema}
-      fields={fields}
-      buttons={buttons}
-      onSubmit={handleSubmit}
-      loading={loading}
-      error={error}
-      description="A secure link will be sent to your inbox."
-    />
+    <Card className="mx-auto max-w-sm">
+      <CardHeader>
+        <CardTitle className="text-2xl">Konnet</CardTitle>
+        <CardDescription>Sign in with your Google account.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-4">
+          <Button
+            onClick={handleGoogleSignIn}
+            disabled={isPending}
+            variant={"outline"}
+            className="w-full text-primary border-primary hover:bg-primary hover:text-primary-foreground"
+          >
+            <GoogleIcon className="size-4" />
+            {isPending ? "Signing in..." : "Sign in with Google"}
+          </Button>
+          {error && <p className="text-sm text-red-600">{error}</p>}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
