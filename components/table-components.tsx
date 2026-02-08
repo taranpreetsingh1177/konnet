@@ -16,6 +16,7 @@ import {
     DropdownMenuCheckboxItem,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuGroup,
     DropdownMenuLabel,
     DropdownMenuRadioGroup,
     DropdownMenuRadioItem,
@@ -158,6 +159,7 @@ interface TableToolbarProps {
         disabled?: boolean;
         selectionMode?: "single" | "multiple" | "all" | "any"; // Default "any" (>0)
     }[];
+    actions?: React.ReactNode;
     className?: string;
 }
 
@@ -174,6 +176,7 @@ export function TableToolbar({
     selectedCount = 0,
     totalCount,
     bulkActions = [],
+    actions,
     className,
 }: TableToolbarProps) {
     const hasActiveFilters = filterGroups.some(g => g.selectedValues.length > 0);
@@ -255,6 +258,7 @@ export function TableToolbar({
                     ) : (
                         sortedActions(onSortChange, sortOptions, sortBy, sortOrder)
                     )}
+                    {actions}
                 </div>
             </div>
         </div>
@@ -271,17 +275,12 @@ function sortedActions(
 
     return (
         <DropdownMenu>
-            <DropdownMenuTrigger className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9")}>
-                <ArrowUpDown className="w-4 h-4 mr-2 text-muted-foreground" />
-                Sort
-                {sortBy && (
-                    <span className="ml-2 px-1.5 py-0.5 rounded-full bg-secondary text-[10px] font-medium">
-                        {sortOptions.find(o => o.value === sortBy)?.label || sortBy}
-                    </span>
-                )}
+            <DropdownMenuTrigger className={cn(buttonVariants({ variant: "outline", size: "icon" }), "h-9 w-9")}>
+                <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
+                <span className="sr-only">Sort</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                <div className="px-1.5 py-1 text-xs font-medium text-muted-foreground">Sort by</div>
                 <DropdownMenuSeparator />
                 <DropdownMenuRadioGroup value={sortBy} onValueChange={(val) => onSortChange(val, sortOrder || 'desc')}>
                     {sortOptions.map(option => (
@@ -291,7 +290,7 @@ function sortedActions(
                     ))}
                 </DropdownMenuRadioGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuLabel>Order</DropdownMenuLabel>
+                <div className="px-1.5 py-1 text-xs font-medium text-muted-foreground">Order</div>
                 <DropdownMenuSeparator />
                 <DropdownMenuRadioGroup value={sortOrder} onValueChange={(val) => onSortChange(sortBy || sortOptions[0]?.value, val as "asc" | "desc")}>
                     <DropdownMenuRadioItem value="asc">Ascending</DropdownMenuRadioItem>
@@ -325,29 +324,31 @@ function FilterDropdown({ group }: { group: FilterGroup }) {
                 )}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-56">
-                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                    Filter by {group.label}
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {group.options.map((option) => {
-                    const isSelected = selectedSet.has(option.value);
-                    const Icon = option.icon;
-                    return (
-                        <DropdownMenuCheckboxItem
-                            key={option.value}
-                            checked={isSelected}
-                            onCheckedChange={(checked) => {
-                                const newValues = checked
-                                    ? [...group.selectedValues, option.value]
-                                    : group.selectedValues.filter(v => v !== option.value);
-                                group.onFilterChange(newValues);
-                            }}
-                        >
-                            {Icon && <Icon className="mr-2 h-4 w-4 text-muted-foreground" />}
-                            <span>{option.label}</span>
-                        </DropdownMenuCheckboxItem>
-                    );
-                })}
+                <DropdownMenuGroup>
+                    <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                        Filter by {group.label}
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {group.options.map((option) => {
+                        const isSelected = selectedSet.has(option.value);
+                        const Icon = option.icon;
+                        return (
+                            <DropdownMenuCheckboxItem
+                                key={option.value}
+                                checked={isSelected}
+                                onCheckedChange={(checked) => {
+                                    const newValues = checked
+                                        ? [...group.selectedValues, option.value]
+                                        : group.selectedValues.filter(v => v !== option.value);
+                                    group.onFilterChange(newValues);
+                                }}
+                            >
+                                {Icon && <Icon className="mr-2 h-4 w-4 text-muted-foreground" />}
+                                <span>{option.label}</span>
+                            </DropdownMenuCheckboxItem>
+                        );
+                    })}
+                </DropdownMenuGroup>
                 {activeCount > 0 && (
                     <>
                         <DropdownMenuSeparator />

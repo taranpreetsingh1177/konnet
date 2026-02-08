@@ -87,16 +87,6 @@ export async function createLeads(leads: LeadInput[]) {
           if (newCompany) {
             companyNameToIdMap.set(companyName, newCompany.id);
 
-            // Trigger Inngest enrichment
-            try {
-              const { inngest } = await import("@/lib/inngest/client");
-              await inngest.send({
-                name: "company/enrich",
-                data: { companyId: newCompany.id },
-              });
-            } catch (err) {
-              console.error("Error triggering enrichment:", err);
-            }
           }
         }
       }
@@ -117,7 +107,10 @@ export async function createLeads(leads: LeadInput[]) {
 
     const { data: insertedLeads, error: leadsError } = await supabase
       .from("leads")
-      .insert(leadsToInsert)
+      .upsert(leadsToInsert, {
+        onConflict: "email,user_id",
+        ignoreDuplicates: true,
+      })
       .select("id");
 
     if (leadsError) {

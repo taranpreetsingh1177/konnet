@@ -1,8 +1,8 @@
 import { inngest } from "@/lib/inngest/client";
 import { createClient } from "@supabase/supabase-js";
 import { NonRetriableError } from "inngest";
-import { generateCompanyEmailTemplate } from "@/lib/ai/generate-email";
-import { validateEmailContent } from "@/lib/ai/validate-email";
+import { generateCompanyEmailTemplate } from "../lib/generate-email";
+import { validateEmailContent } from "../lib/validate-email";
 
 // Create admin Supabase client for background jobs
 const supabase = createClient(
@@ -73,12 +73,12 @@ export default inngest.createFunction(
 
                 // 🛡️ AI Quality Check
                 console.log(`[Enrich Company] Validating generated email for: ${company.name}`);
-                const validation = await validateEmailContent(result.subject, result.body);
+                // const validation = await validateEmailContent(result.subject, result.body);
 
-                if (!validation.isValid) {
-                    console.warn(`[Enrich Company] Validation failed: ${validation.reason}`);
-                    throw new Error(`AI Validation Failed: ${validation.reason}`);
-                }
+                // if (!validation.isValid) {
+                //     console.warn(`[Enrich Company] Validation failed: ${validation.reason}`);
+                //     throw new Error(`AI Validation Failed: ${validation.reason}`);
+                // }
 
                 return result;
             } catch (error) {

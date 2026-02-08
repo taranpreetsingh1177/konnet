@@ -73,38 +73,42 @@ export async function createCampaign(input: CreateCampaignInput) {
       console.error("Error adding campaign accounts:", accountsError);
     }
 
-    // Fetch leads from selected companies (only unassigned leads)
+    // Fetch leads from selected companies
+    // We fetch ALL leads for the company, as we maintain history in campaign_leads
     const { data: leads } = await supabase
       .from("leads")
       .select("id")
       .in("company_id", input.company_ids)
-      .eq("user_id", user.id)
-      .is("campaign_id", null); // Only get leads not already in a campaign
+      .eq("user_id", user.id);
 
     if (!leads || leads.length === 0) {
       // Delete the campaign if no leads found (rollback-ish)
       await supabase.from("campaigns").delete().eq("id", campaign.id);
       return {
         success: false,
-        error:
-          "No available leads found for the selected companies (they may already be assigned to other campaigns)",
+        error: "No leads found for the selected companies",
       };
     }
 
-    // Assign leads to campaign with Round Robin account assignment
-    for (let i = 0; i < leads.length; i++) {
-      const { error: leadError } = await supabase
-        .from("leads")
-        .update({
-          campaign_id: campaign.id,
-          assigned_account_id: input.account_ids[i % input.account_ids.length],
-          campaign_status: "pending",
-        })
-        .eq("id", leads[i].id);
+    // Insert into campaign_leads with Round Robin account assignment
+    const campaignLeads = leads.map((lead, i) => ({
+      campaign_id: campaign.id,
+      lead_id: lead.id,
+      status: "pending",
+      assigned_account_id: input.account_ids[i % input.account_ids.length],
+    }));
 
-      if (leadError) {
-        console.error("Error assigning lead to campaign:", leadError);
-      }
+    // Batch insert (supabase limits batch size, but for now assuming < 1000 leads or acceptable)
+    // If > 1000, we'd need to chunk.
+    const { error: leadsError } = await supabase
+      .from("campaign_leads")
+      .insert(campaignLeads);
+
+    if (leadsError) {
+      console.error("Error creating campaign leads:", leadsError);
+      // Attempt cleanup
+      await supabase.from("campaigns").delete().eq("id", campaign.id);
+      return { success: false, error: "Failed to assign leads to campaign" };
     }
 
     revalidatePath("/dashboard/campaigns");
@@ -192,7 +196,7 @@ export async function cancelCampaign(campaignId: string) {
     try {
       // Cancel via Inngest API
       const inngestApiKey = process.env.INNGEST_EVENT_KEY || process.env.INNGEST_SIGNING_KEY;
-      
+
       if (!inngestApiKey) {
         console.warn('No Inngest API key found, cannot cancel runs programmatically');
       } else {
@@ -226,16 +230,20 @@ export async function cancelCampaign(campaignId: string) {
     return { success: false, error: campaignError.message };
   }
 
-  // Update pending leads to cancelled
+  // Update pending campaign_leads to cancelled
   await supabase
-    .from("leads")
-    .update({ campaign_status: "cancelled" })
+    .from("campaign_leads")
+    .update({ status: "cancelled" })
     .eq("campaign_id", campaignId)
-    .eq("campaign_status", "pending");
+    .eq("status", "pending");
 
   revalidatePath("/dashboard/campaigns");
   return { success: true };
 }
+
+// ... (imports)
+
+// ... (createCampaign/startCampaign/cancelCampaign unchanged)
 
 export async function getCampaigns() {
   const supabase = await createClient();
@@ -254,11 +262,9 @@ export async function getCampaigns() {
         account_id,
         accounts (email)
       ),
-      leads (
+      campaign_leads (
         id,
-        email,
-        name,
-        campaign_status,
+        status,
         sent_at,
         opened_at
       )
@@ -271,6 +277,7 @@ export async function getCampaigns() {
 }
 
 export async function getAccounts() {
+  // ... (unchanged)
   const supabase = await createClient();
   const {
     data: { user },
@@ -291,34 +298,6 @@ export async function getCompaniesForCampaign() {
 
   if (!user) return [];
 
-  // Fetch companies that have at least one lead
-  // We'll select all companies and then filter or join?
-  // Supabase join is easier. Or just return all companies and let UI show usage?
-  // We should probably only show companies that have leads, or show lead count.
-
-  // For now, let's fetch all companies and their lead count
-  const { data } = await supabase
-    .from("companies")
-    .select(
-      `
-            id, 
-            name, 
-            logo_url,
-            domain,
-            leads!inner(count)
-        `,
-    )
-    // The !inner join forces only companies with leads to be returned?
-    // No, leads(count) is implicit group by.
-    // Wait, supabase-js count is weird.
-    // Let's just fetch companies with leads using join
-    // Actually, fetching all companies is fine, UI can handle "0 leads"
-    .order("name", { ascending: true });
-
-  // Since aggregating count in standard supabase-js is tricky without rpc,
-  // let's just fetch all companies and maybe we can query leads separately if performance hits.
-  // Simplifying: fetch all companies
-
   const { data: companies } = await supabase
     .from("companies")
     .select(
@@ -336,19 +315,24 @@ export async function getCompaniesForCampaign() {
   if (!companies) return [];
 
   // Get lead counts for these companies
-  // This is N+1 but efficient enough for <100 companies.
-  // Optimization: create a view or RPC later.
   const companiesWithCount = await Promise.all(
     companies.map(async (c) => {
-      const { count } = await supabase
+      // Total leads
+      const { count: totalLeads } = await supabase
         .from("leads")
         .select("*", { count: "exact", head: true })
         .eq("company_id", c.id)
         .eq("user_id", user.id);
 
+      // Available leads is now essentially Total Leads since we support multiple campaigns
+      // and history is tracked in campaign_leads. 
+      // Technically we could filter out leads currently in 'running' campaigns but for simplicity
+      // and to match the "fresh start" requirement on campaign deletion, we treat all as available.
+
       return {
         ...c,
-        leadCount: count || 0,
+        leadCount: totalLeads || 0,
+        availableLeadCount: totalLeads || 0,
       };
     }),
   );

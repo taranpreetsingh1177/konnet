@@ -12,11 +12,9 @@ export const campaignsRouter = router({
                     account_id,
                     accounts (email)
                 ),
-                leads (
+                campaign_leads (
                     id,
-                    email,
-                    name,
-                    campaign_status,
+                    status,
                     sent_at,
                     opened_at
                 )

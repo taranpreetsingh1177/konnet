@@ -8,13 +8,15 @@ import { Label } from '@/components/ui/label'
 import {
     ArrowLeft, Building2, Globe, Mail, Users,
     CheckCircle, Clock, Save, Loader2, LayoutDashboard,
-    Eye, EyeOff, AlertTriangle, RefreshCw, Sparkles
+    AlertTriangle, RefreshCw, Sparkles
 } from 'lucide-react'
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 
 import { toast } from "sonner"
 import { cn } from '@/lib/utils'
+import { Editor } from '@/components/editor'
+import { getDefaultTemplate } from '@/features/content/actions/content-actions'
 
 type ViewSection = 'template' | 'leads' | 'insights'
 
@@ -38,13 +40,29 @@ export default function CompanyDetailPage() {
     // Local State for Template
     const [templateSubject, setTemplateSubject] = useState('')
     const [templateBody, setTemplateBody] = useState('')
+    const [isAiGenerated, setIsAiGenerated] = useState(true)
 
     // Sync state when data loads
     useEffect(() => {
-        if (company) {
-            setTemplateSubject(company.email_subject || '')
-            setTemplateBody(company.email_template || '')
+        const loadData = async () => {
+            if (company) {
+                if (company.email_template) {
+                    setTemplateSubject(company.email_subject || '')
+                    setTemplateBody(company.email_template || '')
+                    setIsAiGenerated(true)
+                } else {
+                    try {
+                        const defaultTemplate = await getDefaultTemplate()
+                        setTemplateSubject(defaultTemplate.subject)
+                        setTemplateBody(defaultTemplate.body)
+                        setIsAiGenerated(false)
+                    } catch (error) {
+                        console.error('Failed to load default template', error)
+                    }
+                }
+            }
         }
+        loadData()
     }, [company])
 
 
@@ -110,26 +128,6 @@ export default function CompanyDetailPage() {
         return diffMinutes > 5
     }
 
-    // Get first lead for preview
-    const previewLead = company?.leads?.[0] as any | undefined
-
-    // Replace template variables with actual lead data for preview
-    const replaceVarsForPreview = (template: string) => {
-        if (!template || !previewLead) return template
-        let result = template
-        const vars: Record<string, string> = {
-            name: previewLead.name || 'John Doe',
-            email: previewLead.email || 'john@example.com',
-            role: previewLead.role || 'Manager',
-            company_name: company?.name || 'Company'
-        }
-        for (const [key, value] of Object.entries(vars)) {
-            // Replace {{key}} and {key}
-            result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'gi'), value)
-            result = result.replace(new RegExp(`\\{${key}\\}`, 'gi'), value)
-        }
-        return result
-    }
 
     if (isLoading) {
         return (
@@ -298,37 +296,50 @@ export default function CompanyDetailPage() {
                         </div>
 
                         <div className="flex-1 flex flex-col p-6 gap-6 overflow-hidden">
-                            <div className="space-y-2 shrink-0">
-                                <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Subject Line</Label>
-                                <Input
-                                    value={templateSubject}
-                                    onChange={(e) => setTemplateSubject(e.target.value)}
-                                    placeholder={`Quick question for ${company.name}...`}
-                                    className="h-11 text-sm border-gray-200 focus:border-blue-500 focus:ring-blue-50/50 bg-gray-50/30 font-medium"
-                                />
-                            </div>
-
-                            <div className="flex-1 flex flex-col min-h-0 space-y-2">
-                                <div className="flex items-center justify-between pl-1">
-                                    <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Email Preview</Label>
-                                    {previewLead && (
-                                        <span className="text-[10px] text-blue-500 font-bold tracking-tight flex items-center gap-1.5">
-                                            <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
-                                            Previewing as: {previewLead.name || previewLead.email}
-                                        </span>
-                                    )}
+                            {!isAiGenerated ? (
+                                <div className="flex-1 flex flex-col items-center justify-center text-center p-12 bg-gray-50/50 rounded-2xl border border-dashed border-gray-200 gap-4">
+                                    <div className="p-4 bg-amber-100 rounded-full text-amber-600 mb-2">
+                                        <Sparkles className="w-8 h-8" />
+                                    </div>
+                                    <div className="space-y-2 max-w-sm">
+                                        <h3 className="text-lg font-bold text-gray-900">No AI Template Generated</h3>
+                                        <p className="text-sm text-gray-500">
+                                            We haven't generated a personalized email template for this company yet. Click below to generate one using AI.
+                                        </p>
+                                    </div>
+                                    <Button
+                                        onClick={handleRetryEnrichment}
+                                        variant={'outline'}
+                                        className={'text-primary hover:text-primary-foreground hover:bg-primary'}
+                                    >
+                                        <Sparkles className="size-4" />
+                                        Generate with AI
+                                    </Button>
                                 </div>
+                            ) : (
+                                <>
+                                    <div className="space-y-2 shrink-0">
+                                        <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Subject Line</Label>
+                                        <Input
+                                            value={templateSubject}
+                                            onChange={(e) => setTemplateSubject(e.target.value)}
+                                            placeholder={`Quick question for ${company.name}...`}
+                                            className="h-11 text-sm border-gray-200 focus:border-blue-500 focus:ring-blue-50/50 bg-gray-50/30 font-medium"
+                                        />
+                                    </div>
 
-                                <div className="flex-1 min-h-0 border border-gray-100 rounded-xl overflow-auto bg-gray-50/30 p-8 flex justify-center">
-                                    <div className="bg-white w-full max-w-[600px] shadow-xl shadow-gray-200/50 rounded-lg border border-gray-100 flex flex-col min-h-full h-fit">
-                                        {/* HTML Email Preview */}
-                                        <div className="p-10" dangerouslySetInnerHTML={{ __html: replaceVarsForPreview(templateBody) }} />
-                                        <div className="mt-auto p-6 border-t border-gray-50 bg-gray-50/50 text-[10px] text-gray-400 text-center uppercase tracking-widest font-bold">
-                                            Sent via Konnet Outreach
+                                    <div className="flex-1 flex flex-col min-h-0 space-y-2">
+                                        <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Email Body</Label>
+                                        <div className="flex-1 min-h-0 rounded-xl overflow-hidden bg-white border border-gray-200">
+                                            <Editor
+                                                content={templateBody}
+                                                onChange={setTemplateBody}
+                                                className="h-full min-h-[400px] focus:ring-0"
+                                            />
                                         </div>
                                     </div>
-                                </div>
-                            </div>
+                                </>
+                            )}
                         </div>
                     </div>
                 )}

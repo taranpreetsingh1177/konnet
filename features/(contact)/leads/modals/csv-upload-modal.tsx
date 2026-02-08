@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import { UploadCloud, FileSpreadsheet, ArrowRight, Check } from "lucide-react";
 import Papa from "papaparse";
-import { createLeads, type LeadInput } from "./actions";
+import { createLeads, type LeadInput } from "../actions/actions";
 
 type FieldMapping = {
   email: string;
@@ -230,9 +230,9 @@ export function CSVUploadModal({ onSuccess }: CSVUploadModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger>
-        <Button className="bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-md px-6">
-          <UploadCloud className="w-4 h-4 mr-2" />
+      <DialogTrigger className="inline-flex ">
+        <Button variant={'outline'} className={'text-primary border-primary hover:text-primary-foreground hover:bg-primary'}>
+          <UploadCloud className="size-4" />
           Upload
         </Button>
       </DialogTrigger>

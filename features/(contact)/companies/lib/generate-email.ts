@@ -1,40 +1,11 @@
 import { generateText } from "ai";
 import { vertex } from "@/lib/vertex-ai/vertex-ai";
-import {
-  convertStructuredToHTML,
-  type StructuredEmail,
-} from "./email-template-builder";
 import { z } from "zod";
 import {
   COMPANY_EMAIL_SYSTEM_PROMPT,
-  generateCompanyEmailUserPrompt,
 } from "@/lib/constants/prompts";
 
-// Zod schema for structured email validation
-const ServiceBoxSchema = z.object({
-  icon: z.string().min(1, "Icon is required"),
-  title: z.string().min(1, "Title is required"),
-  subtitle: z.string().min(1, "Subtitle is required"),
-});
-
-const EmailBlockSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("text"),
-    content: z.string().min(1, "Text content cannot be empty"),
-  }),
-  z.object({
-    type: z.literal("boxes"),
-    items: z
-      .array(ServiceBoxSchema)
-      .min(1, "At least one service box required")
-      .max(6, "Maximum 6 service boxes"),
-  }),
-]);
-
-const StructuredEmailSchema = z.object({
-  subject: z.string().min(5, "Subject too short").max(80, "Subject too long"),
-  blocks: z.array(EmailBlockSchema).min(3, "Email must have at least 3 blocks"),
-});
+// Zod schemas removed as we are now using plain text generation.
 
 
 type LeadData = {
@@ -73,14 +44,24 @@ export async function generateCompanyEmailTemplate(
   console.log("");
 
   try {
-    // System Prompt (Inlined for Vercel/Serverless safety)
-    const systemPrompt = COMPANY_EMAIL_SYSTEM_PROMPT;
+    // Fetch default template which contains the prompts
+    const { getDefaultTemplate } = await import("@/features/content/actions/content-actions");
+    const template = await getDefaultTemplate();
+
+    const systemPrompt = template.company_system_prompt;
+    const userPromptTemplate = template.company_user_prompt;
+
+    if (!systemPrompt || !userPromptTemplate) {
+      throw new Error("No AI prompts configured. Please set them in Dashboard > Content > Prompts.");
+    }
 
     console.log(`✅ System prompt loaded (${systemPrompt.length} characters)`);
     console.log("");
 
-    // Construct user prompt
-    const userPrompt = generateCompanyEmailUserPrompt(company);
+    // Construct user prompt by replacing variables in the stored template
+    const userPrompt = userPromptTemplate
+      .replace("{{company}}", company.name)
+      .replace("{{domain}}", company.domain);
 
     console.log(
       "🤖 Calling Gemini 3 Flash via Vertex AI with Google Search grounding...",
@@ -98,12 +79,39 @@ export async function generateCompanyEmailTemplate(
       },
     });
 
-    const cleaned = response.text.replace(/```json\n?|\n?```/g, "").trim();
+    // Parse plain text response
+    const text = response.text;
+    const subjectMatch = text.match(/^Subject:\s*(.+)$/m);
+    const subject = subjectMatch ? subjectMatch[1].trim() : "Collaboration Opportunity";
 
-    const structured = StructuredEmailSchema.parse(JSON.parse(cleaned));
+    // Extract body (everything after Subject line, trimming whitespace)
+    let body = text.replace(/^Subject:.*$/m, "").trim();
 
-    const result = convertStructuredToHTML(structured);
-    return result;
+    // Remove [Email Body Start/End] markers if present
+    body = body.replace(/\[Email Body Start\]/i, "").replace(/\[Email Body End\]/i, "").trim();
+
+    // Convert plain text newlines to HTML paragraphs for TipTap editor
+    // Check if we have double newlines (paragraphs)
+    const hasDoubleNewlines = /\n\s*\n/.test(body);
+
+    if (hasDoubleNewlines) {
+      const paragraphs = body.split(/\n\s*\n/);
+      body = paragraphs
+        .filter(p => p.trim())
+        .map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+        .join('');
+    } else {
+      // Fallback: If no double newlines, treat single newlines as paragraph breaks
+      // ignoring potential lists/signatures where we might want tighter spacing, 
+      // but ensuring readability is the priority as per user request.
+      const paragraphs = body.split(/\n/);
+      body = paragraphs
+        .filter(p => p.trim())
+        .map(p => `<p>${p}</p>`)
+        .join('');
+    }
+
+    return { subject, body };
   } catch (error) {
     console.error("");
     console.error("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");

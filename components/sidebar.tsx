@@ -1,13 +1,37 @@
 'use client'
 
-import Link from "next/link"
+import * as React from "react"
 import { usePathname } from "next/navigation"
-import { Users, Mail, Settings, Key, LogOut, Building2 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import Link from "next/link"
+import { Users, Mail, Settings, Key, LogOut, Building2, FileText } from "lucide-react"
 
-const navItems = [
+import {
+    Sidebar as ShadcnSidebar,
+    SidebarContent,
+    SidebarGroup,
+    SidebarGroupContent,
+    SidebarHeader,
+    SidebarMenu,
+    SidebarMenuButton,
+    SidebarMenuItem,
+    SidebarFooter,
+} from "@/components/ui/sidebar"
+
+interface NavItem {
+    name: string
+    href: string
+    icon: any
+    matches?: string[]
+}
+
+const navItems: NavItem[] = [
     {
-        name: 'Contacts',
+        name: 'Replies',
+        href: '/dashboard/replies',
+        icon: Mail,
+    },
+    {
+        name: 'Leads',
         href: '/dashboard/leads',
         icon: Users,
     },
@@ -26,9 +50,15 @@ const navItems = [
         href: '/dashboard/campaigns',
         icon: Mail,
     },
+    {
+        name: 'Content',
+        href: '/dashboard/content/default-template',
+        icon: FileText,
+        matches: ['/dashboard/content']
+    }
 ]
 
-const bottomNavItems = [
+const bottomNavItems: NavItem[] = [
     {
         name: 'Settings',
         href: '/dashboard/settings',
@@ -44,77 +74,73 @@ export function Sidebar({ onLogout }: SidebarProps) {
     const pathname = usePathname()
 
     return (
-        <aside className="w-56 bg-white border-r border-gray-100 flex flex-col h-full">
-            {/* Sidebar Header */}
-            <div className="px-4 py-5 border-b border-gray-50">
-                <h1 className="font-bold text-gray-900 text-xl tracking-tight">Konnet</h1>
-            </div>
+        <ShadcnSidebar>
+            <SidebarHeader className="border-b border-sidebar-border px-6">
+                <span className="text-xl font-bold tracking-tight text-sidebar-foreground">Konnet</span>
+            </SidebarHeader>
 
-            {/* Main Navigation */}
-            <nav className="flex-1 px-3 py-2">
-                <div className="space-y-1">
-                    {navItems.map((item) => {
-                        const isActive = (item as any).matches
-                            ? (item as any).matches.some((m: string) => pathname.startsWith(m))
-                            : pathname.startsWith(item.href)
-                        return (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                prefetch={true}
-                                className={cn(
-                                    "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-all duration-150",
-                                    isActive
-                                        ? "bg-blue-50 text-blue-600"
-                                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                                )}
-                            >
-                                <item.icon className={cn(
-                                    "w-4 h-4",
-                                    isActive ? "text-blue-500" : "text-gray-400"
-                                )} />
-                                {item.name}
-                            </Link>
-                        )
-                    })}
-                </div>
-            </nav>
+            <SidebarContent>
+                <SidebarGroup>
+                    <SidebarGroupContent>
+                        <SidebarMenu className="gap-y-2">
+                            {navItems.map((item) => {
+                                const isActive = item.matches
+                                    ? item.matches.some((m) => pathname.startsWith(m))
+                                    : pathname.startsWith(item.href)
 
-            {/* Bottom Section */}
-            <div className="px-3 py-4 border-t border-gray-100">
-                <div className="space-y-1">
+                                return (
+                                    <SidebarMenuItem key={item.name}>
+                                        <SidebarMenuButton
+                                            isActive={isActive}
+                                            className="flex gap-x-4 h-10 px-4 data-[active=true]:bg-blue-100 data-[active=true]:text-blue-600"
+                                            tooltip={item.name}
+                                            render={
+                                                <Link href={item.href} prefetch={true}>
+                                                    <item.icon />
+                                                    <span>{item.name}</span>
+                                                </Link>
+                                            }
+                                        />
+                                    </SidebarMenuItem>
+                                )
+                            })}
+                        </SidebarMenu>
+                    </SidebarGroupContent>
+                </SidebarGroup>
+            </SidebarContent>
+
+            <SidebarFooter className="border-t border-sidebar-border">
+                <SidebarMenu>
                     {bottomNavItems.map((item) => {
                         const isActive = pathname.startsWith(item.href)
                         return (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                prefetch={true}
-                                className={cn(
-                                    "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-all duration-150",
-                                    isActive
-                                        ? "bg-blue-50 text-blue-600"
-                                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                                )}
-                            >
-                                <item.icon className={cn(
-                                    "w-4 h-4",
-                                    isActive ? "text-blue-500" : "text-gray-400"
-                                )} />
-                                {item.name}
-                            </Link>
+                            <SidebarMenuItem key={item.name}>
+                                <SidebarMenuButton
+                                    isActive={isActive}
+                                    className="flex gap-x-4 h-10 px-4 data-[active=true]:bg-blue-100 data-[active=true]:text-blue-600"
+                                    tooltip={item.name}
+                                    render={
+                                        <Link href={item.href} prefetch={true}>
+                                            <item.icon />
+                                            <span>{item.name}</span>
+                                        </Link>
+                                    }
+                                />
+                            </SidebarMenuItem>
                         )
                     })}
-
-                    <button
-                        onClick={onLogout}
-                        className="flex w-full items-center gap-3 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 rounded-lg transition-all duration-150"
-                    >
-                        <LogOut className="w-4 h-4" />
-                        Log Out
-                    </button>
-                </div>
-            </div>
-        </aside>
+                    <SidebarMenuItem>
+                        <SidebarMenuButton
+                            onClick={onLogout}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50 data-[active=true]:bg-red-50 data-[active=true]:text-red-700"
+                            tooltip="Log Out"
+                        >
+                            <LogOut />
+                            <span>Log Out</span>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                </SidebarMenu>
+            </SidebarFooter>
+        </ShadcnSidebar >
     )
 }
