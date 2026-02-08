@@ -37,11 +37,9 @@ interface Campaign {
         account_id: string
         accounts: { email: string } | null
     }>
-    leads: Array<{
+    campaign_leads: Array<{
         id: string
-        email: string
-        name: string | null
-        campaign_status: string
+        status: string
         sent_at: string | null
         opened_at: string | null
     }>
@@ -381,9 +379,9 @@ export function CampaignsTable({ accounts, companies }: CampaignsTableProps) {
                         ) : (
                             filteredAndSortedCampaigns.map((campaign: Campaign, index: number) => {
                                 const StatusIcon = statusConfig[campaign.status]?.icon || Clock
-                                const sentCount = campaign.leads?.filter((l) => l.campaign_status === 'sent' || l.campaign_status === 'opened').length || 0
-                                const totalCount = campaign.leads?.length || 0
-                                const failedCount = campaign.leads?.filter((l) => l.campaign_status === 'failed').length || 0
+                                const sentCount = campaign.campaign_leads?.filter((l) => l.status === 'sent' || l.status === 'opened' || l.status === 'replied').length || 0
+                                const totalCount = campaign.campaign_leads?.length || 0
+                                const failedCount = campaign.campaign_leads?.filter((l) => l.status === 'failed').length || 0
                                 const progress = totalCount > 0 ? (sentCount / totalCount) * 100 : 0
 
                                 return (
