@@ -49,6 +49,10 @@ import {
 } from "@/components/table-components";
 import { trpc } from "@/lib/trpc/client";
 import Link from "next/link";
+import {
+    Companies,
+    type CompanyEnrichmentStatus,
+} from "../lib/constants";
 
 interface Company {
     id: string;
@@ -56,16 +60,41 @@ interface Company {
     name: string;
     logo_url: string | null;
     email_template: string | null;
-    enrichment_status: "pending" | "processing" | "completed" | "failed";
+    enrichment_status: CompanyEnrichmentStatus;
     created_at: string;
     leads?: { count: number }[];
 }
 
-const statusConfig = {
-    pending: { label: 'Pending', bgColor: 'bg-gray-100', textColor: 'text-gray-600', icon: Clock },
-    processing: { label: 'Processing', bgColor: 'bg-blue-50', textColor: 'text-blue-600', icon: Loader2 },
-    completed: { label: 'Completed', bgColor: 'bg-green-50', textColor: 'text-green-600', icon: CheckCircle },
-    failed: { label: 'Failed', bgColor: 'bg-red-50', textColor: 'text-red-600', icon: XCircle },
+const statusConfig: Record<CompanyEnrichmentStatus, {
+    label: string;
+    bgColor: string;
+    textColor: string;
+    icon: typeof Clock;
+}> = {
+    [Companies.EnrichmentStatus.PENDING]: {
+        label: "Pending",
+        bgColor: "bg-gray-100",
+        textColor: "text-gray-600",
+        icon: Clock,
+    },
+    [Companies.EnrichmentStatus.PROCESSING]: {
+        label: "Processing",
+        bgColor: "bg-blue-50",
+        textColor: "text-blue-600",
+        icon: Loader2,
+    },
+    [Companies.EnrichmentStatus.COMPLETED]: {
+        label: "Completed",
+        bgColor: "bg-green-50",
+        textColor: "text-green-600",
+        icon: CheckCircle,
+    },
+    [Companies.EnrichmentStatus.FAILED]: {
+        label: "Failed",
+        bgColor: "bg-red-50",
+        textColor: "text-red-600",
+        icon: XCircle,
+    },
 };
 
 export function CompaniesTable() {
@@ -120,7 +149,7 @@ export function CompaniesTable() {
             // First, mark as processing using tRPC mutation
             await updateMutation.mutateAsync({
                 id: companyId,
-                enrichment_status: 'pending',
+                enrichment_status: Companies.EnrichmentStatus.PENDING,
                 enrichment_error: null
             });
 
@@ -141,7 +170,7 @@ export function CompaniesTable() {
                 // Mark as failed
                 updateMutation.mutate({
                     id: companyId,
-                    enrichment_status: 'failed',
+                    enrichment_status: Companies.EnrichmentStatus.FAILED,
                     enrichment_error: 'Enrichment server not responding'
                 });
             }
@@ -149,7 +178,7 @@ export function CompaniesTable() {
             toast.error("Cannot connect to enrichment server.");
             updateMutation.mutate({
                 id: companyId,
-                enrichment_status: 'failed',
+                enrichment_status: Companies.EnrichmentStatus.FAILED,
                 enrichment_error: 'Cannot connect to enrichment server'
             });
         }

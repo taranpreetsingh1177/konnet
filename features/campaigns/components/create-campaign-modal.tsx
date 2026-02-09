@@ -38,7 +38,7 @@ import {
   createCampaign,
   startCampaign,
   type CreateCampaignInput,
-} from "./actions";
+} from "../actions/actions";
 
 type Account = {
   id: string;
@@ -91,14 +91,14 @@ export function CreateCampaignModal({
   };
 
   const selectAllCompanies = () => {
-    const filteredCompanies = companies.filter(c =>
-      c.name.toLowerCase().includes(searchQuery.toLowerCase())
+    const filteredCompanies = companies.filter((c) =>
+      c.name.toLowerCase().includes(searchQuery.toLowerCase()),
     );
     setSelectedCompanies(filteredCompanies.map((c) => c.id));
   };
 
-  const filteredCompanies = companies.filter(c =>
-    c.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredCompanies = companies.filter((c) =>
+    c.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   const handleCreate = async () => {
@@ -107,10 +107,6 @@ export function CreateCampaignModal({
 
     const input: CreateCampaignInput = {
       name,
-      subject_template: "", // Not used - each company has its own
-      body_template: "", // Not used - each company has its own
-      use_ai: false,
-      ai_prompt: undefined,
       account_ids: selectedAccounts,
       company_ids: selectedCompanies,
       scheduled_at: scheduledAt
@@ -295,15 +291,24 @@ export function CreateCampaignModal({
                             {company.name}
                           </p>
                           <div className="flex items-center gap-2 text-xs text-gray-500">
-                            <Badge variant="secondary" className="text-[10px] font-normal h-5 px-1.5 bg-gray-100 text-gray-600 hover:bg-gray-200">
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] font-normal h-5 px-1.5 bg-gray-100 text-gray-600 hover:bg-gray-200"
+                            >
                               Total: {company.leadCount}
                             </Badge>
                             {company.availableLeadCount > 0 ? (
-                              <Badge variant="secondary" className="text-[10px] font-normal h-5 px-1.5 bg-green-50 text-green-700 hover:bg-green-100 border-green-100">
+                              <Badge
+                                variant="secondary"
+                                className="text-[10px] font-normal h-5 px-1.5 bg-green-50 text-green-700 hover:bg-green-100 border-green-100"
+                              >
                                 Available: {company.availableLeadCount}
                               </Badge>
                             ) : (
-                              <Badge variant="outline" className="text-[10px] font-normal h-5 px-1.5 text-gray-400 border-dashed">
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] font-normal h-5 px-1.5 text-gray-400 border-dashed"
+                              >
                                 None Available
                               </Badge>
                             )}

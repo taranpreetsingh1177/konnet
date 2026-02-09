@@ -1,12 +1,13 @@
-import { router, procedure } from '@/server/trpc';
-import { z } from 'zod';
-import { cancelCampaign } from '@/app/dashboard/campaigns/actions';
+import { router, procedure } from "@/server/trpc";
+import { z } from "zod";
+import { cancelCampaign } from "@/features/campaigns/actions/actions";
 
 export const campaignsRouter = router({
-    getAll: procedure.query(async ({ ctx }) => {
-        const { data } = await ctx.db
-            .from('campaigns')
-            .select(`
+  getAll: procedure.query(async ({ ctx }) => {
+    const { data } = await ctx.db
+      .from("campaigns")
+      .select(
+        `
                 *,
                 campaign_accounts (
                     account_id,
@@ -19,44 +20,45 @@ export const campaignsRouter = router({
                     opened_at,
                     error
                 )
-            `)
-            .order('created_at', { ascending: false });
+            `,
+      )
+      .order("created_at", { ascending: false });
 
-        return data || [];
+    return data || [];
+  }),
+
+  delete: procedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.db
+        .from("campaigns")
+        .delete()
+        .eq("id", input.id);
+
+      if (error) throw new Error(error.message);
+      return { success: true };
     }),
 
-    delete: procedure
-        .input(z.object({ id: z.string() }))
-        .mutation(async ({ ctx, input }) => {
-            const { error } = await ctx.db
-                .from('campaigns')
-                .delete()
-                .eq('id', input.id);
+  bulkDelete: procedure
+    .input(z.object({ ids: z.array(z.string()) }))
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.db
+        .from("campaigns")
+        .delete()
+        .in("id", input.ids);
 
-            if (error) throw new Error(error.message);
-            return { success: true };
-        }),
+      if (error) throw new Error(error.message);
+      return { success: true };
+    }),
 
-    bulkDelete: procedure
-        .input(z.object({ ids: z.array(z.string()) }))
-        .mutation(async ({ ctx, input }) => {
-            const { error } = await ctx.db
-                .from('campaigns')
-                .delete()
-                .in('id', input.ids);
-
-            if (error) throw new Error(error.message);
-            return { success: true };
-        }),
-
-    cancel: procedure
-        .input(z.object({ id: z.string() }))
-        .mutation(async ({ ctx, input }) => {
-            // Use server action for campaign cancellation
-            const result = await cancelCampaign(input.id);
-            if (!result.success) {
-                throw new Error(result.error || 'Failed to cancel campaign');
-            }
-            return result;
-        }),
+  cancel: procedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      // Use server action for campaign cancellation
+      const result = await cancelCampaign(input.id);
+      if (!result.success) {
+        throw new Error(result.error || "Failed to cancel campaign");
+      }
+      return result;
+    }),
 });
