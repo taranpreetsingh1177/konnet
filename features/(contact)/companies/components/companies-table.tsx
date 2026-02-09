@@ -332,12 +332,7 @@ export function CompaniesTable() {
                         icon: Trash2,
                     },
                 ]}
-                sortOptions={sortOptions}
-                sortBy={sorting[0]?.id}
-                sortOrder={sorting[0]?.desc ? "desc" : "asc"}
-                onSortChange={(field, order) => {
-                    setSorting([{ id: field, desc: order === "desc" }]);
-                }}
+
             />
             <TableContent table={table} columns={columns} isLoading={isLoading} />
             <TablePagination table={table} />

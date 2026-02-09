@@ -103,7 +103,7 @@ export async function generateCompanyEmailTemplate(
       const paragraphs = body.split(/\n\s*\n/);
       body = paragraphs
         .filter((p) => p.trim())
-        .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
+        .map((p) => `<p style="margin-bottom: 16px;">${p.replace(/\n/g, "<br>")}</p>`)
         .join("");
     } else {
       // Fallback: If no double newlines, treat single newlines as paragraph breaks
@@ -112,9 +112,14 @@ export async function generateCompanyEmailTemplate(
       const paragraphs = body.split(/\n/);
       body = paragraphs
         .filter((p) => p.trim())
-        .map((p) => `<p>${p}</p>`)
+        .map((p) => `<p style="margin-bottom: 16px;">${p}</p>`)
         .join("");
     }
+
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    console.log("✅ Generated HTML Body:");
+    console.log(body);
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
     return { subject, body };
   } catch (error) {
