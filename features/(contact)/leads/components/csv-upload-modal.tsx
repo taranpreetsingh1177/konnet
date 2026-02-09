@@ -33,11 +33,15 @@ type FieldMapping = {
 };
 
 type CSVUploadModalProps = {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onSuccess?: () => void;
 };
 
-export function CSVUploadModal({ onSuccess }: CSVUploadModalProps) {
-  const [open, setOpen] = useState(false);
+export function CSVUploadModal({ open: controlledOpen, onOpenChange: controlledOnOpenChange, onSuccess }: CSVUploadModalProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setOpen = controlledOnOpenChange || setInternalOpen;
   const [step, setStep] = useState<
     "upload" | "mapping" | "loading" | "success"
   >("upload");
@@ -230,12 +234,14 @@ export function CSVUploadModal({ onSuccess }: CSVUploadModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger className="inline-flex ">
-        <Button variant={'outline'} className={'text-primary border-primary hover:text-primary-foreground hover:bg-primary'}>
-          <UploadCloud className="size-4" />
-          Upload
-        </Button>
-      </DialogTrigger>
+      {controlledOpen === undefined && (
+        <DialogTrigger className="inline-flex ">
+          <Button variant={'outline'} className={'text-primary border-primary hover:text-primary-foreground hover:bg-primary'}>
+            <UploadCloud className="size-4" />
+            Upload
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-lg">
         {step === "upload" && (
           <>

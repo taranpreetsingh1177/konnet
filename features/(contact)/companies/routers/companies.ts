@@ -1,6 +1,14 @@
 import { router, procedure } from '@/server/trpc';
 import { z } from 'zod';
 import { inngest } from '@/lib/inngest/client';
+import {
+    Companies,
+    type CompanyEnrichmentStatus,
+} from '../lib/constants';
+
+const enrichmentStatuses = Object.values(
+    Companies.EnrichmentStatus
+) as [CompanyEnrichmentStatus, ...CompanyEnrichmentStatus[]];
 
 export const companiesRouter = router({
     // Get all companies
@@ -56,7 +64,7 @@ export const companiesRouter = router({
             logo_url: z.string().optional(),
             email_template: z.string().optional(),
             email_subject: z.string().optional(),
-            enrichment_status: z.enum(['pending', 'processing', 'completed', 'failed']).optional(),
+            enrichment_status: z.enum(enrichmentStatuses).optional(),
             enrichment_error: z.string().nullable().optional(),
         }))
         .mutation(async ({ ctx, input }) => {
@@ -122,7 +130,7 @@ export const companiesRouter = router({
                 .insert({
                     domain: input.domain,
                     name: input.name,
-                    enrichment_status: 'pending',
+                    enrichment_status: Companies.EnrichmentStatus.PENDING,
                 })
                 .select()
                 .single();
@@ -138,7 +146,7 @@ export const companiesRouter = router({
             const { data: failedCompanies, error: fetchError } = await ctx.db
                 .from('companies')
                 .select('id')
-                .eq('enrichment_status', 'failed');
+                .eq('enrichment_status', Companies.EnrichmentStatus.FAILED);
 
             if (fetchError) throw fetchError;
             if (!failedCompanies || failedCompanies.length === 0) {
@@ -151,7 +159,7 @@ export const companiesRouter = router({
             const { error: updateError } = await ctx.db
                 .from('companies')
                 .update({
-                    enrichment_status: 'pending',
+                    enrichment_status: Companies.EnrichmentStatus.PENDING,
                     enrichment_error: null
                 })
                 .in('id', ids);

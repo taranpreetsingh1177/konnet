@@ -2,6 +2,9 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { Companies } from "@/features/(contact)/companies/lib/constants";
+import { inngest } from "@/lib/inngest/client";
+import { Leads } from "../lib/constants";
 
 export type LeadInput = {
   email: string;
@@ -10,7 +13,6 @@ export type LeadInput = {
   company?: string;
   role?: string;
   custom_fields?: Record<string, string>;
-  tag_ids?: string[];
 };
 
 export async function createLeads(leads: LeadInput[]) {
@@ -27,6 +29,7 @@ export async function createLeads(leads: LeadInput[]) {
     // Step 1: Extract unique companies from leads
     const uniqueCompanies = new Map<string, { name: string; domain: string }>();
 
+    // Use company name from lead, if available. Otherwise, use email domain as fallback. This ensures we have a consistent way to identify companies.
     leads.forEach((lead) => {
       if (lead.company?.trim()) {
         const companyName = lead.company.trim();
@@ -46,6 +49,7 @@ export async function createLeads(leads: LeadInput[]) {
 
     // Step 2: Create companies using Supabase directly with service role key
     const companyNameToIdMap = new Map<string, string>();
+    const newCompanyIds: string[] = [];
 
     if (uniqueCompanies.size > 0) {
       // Use service role key for backend operations
@@ -74,7 +78,8 @@ export async function createLeads(leads: LeadInput[]) {
             .insert({
               domain: companyData.domain,
               name: companyData.name,
-              enrichment_status: "pending",
+              // Set enrichment status to pending so that it gets enriched in the background
+              enrichment_status: Companies.EnrichmentStatus.PENDING,
             })
             .select("id")
             .single();
@@ -86,7 +91,7 @@ export async function createLeads(leads: LeadInput[]) {
 
           if (newCompany) {
             companyNameToIdMap.set(companyName, newCompany.id);
-
+            newCompanyIds.push(newCompany.id);
           }
         }
       }
@@ -118,26 +123,20 @@ export async function createLeads(leads: LeadInput[]) {
       return { success: false, error: leadsError.message };
     }
 
-    // If there are tag_ids for the first lead (batch tagging), apply to all
-    if (leads[0]?.tag_ids?.length && insertedLeads) {
-      const leadTagsToInsert = insertedLeads.flatMap((lead) =>
-        leads[0].tag_ids!.map((tagId) => ({
-          lead_id: lead.id,
-          tag_id: tagId,
-        })),
-      );
-
-      const { error: tagError } = await supabase
-        .from("lead_tags")
-        .insert(leadTagsToInsert);
-
-      if (tagError) {
-        console.error("Error inserting lead_tags:", tagError);
-        // Don't fail the whole operation, leads are already inserted
+    if (newCompanyIds.length > 0) {
+      try {
+        const events = newCompanyIds.map((companyId) => ({
+          name: "company/enrich",
+          data: { companyId },
+        }));
+        await inngest.send(events);
+      } catch (error) {
+        console.error("Error triggering company enrichment:", error);
       }
     }
 
     revalidatePath("/dashboard/leads");
+
     return {
       success: true,
       count: insertedLeads?.length || 0,
@@ -147,49 +146,6 @@ export async function createLeads(leads: LeadInput[]) {
     console.error("Error creating leads:", error);
     return { success: false, error: error.message };
   }
-}
-
-export async function createTag(name: string, color: string = "#6B7280") {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { success: false, error: "Not authenticated" };
-  }
-
-  const { data, error } = await supabase
-    .from("tags")
-    .insert({ user_id: user.id, name, color })
-    .select()
-    .single();
-
-  if (error) {
-    return { success: false, error: error.message };
-  }
-
-  revalidatePath("/dashboard/leads");
-  return { success: true, tag: data };
-}
-
-export async function getTags() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return [];
-  }
-
-  const { data } = await supabase
-    .from("tags")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
-
-  return data || [];
 }
 
 export async function getLeads() {
@@ -204,19 +160,7 @@ export async function getLeads() {
 
   const { data } = await supabase
     .from("leads")
-    .select(
-      `
-      *,
-      lead_tags (
-        tag_id,
-        tags (
-          id,
-          name,
-          color
-        )
-      )
-    `,
-    )
+    .select("*")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 

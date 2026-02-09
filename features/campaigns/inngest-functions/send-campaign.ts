@@ -5,8 +5,8 @@ import { NonRetriableError } from "inngest";
 import fs from "node:fs";
 import path from "node:path";
 import { createEmailWithAttachment } from "@/lib/email/mime-builder";
-import { DEFAULT_EMAIL_BODY, DEFAULT_EMAIL_SUBJECT } from "@/lib/email/default-template";
 import { replaceTemplateVars } from "@/features/(contact)/companies/lib/generate-email";
+import { Campaigns } from "../lib/constants";
 
 // Create admin Supabase client for background jobs
 const supabase = createClient(
@@ -17,11 +17,26 @@ const supabase = createClient(
 const ATTACHMENT_PDF = "Project Reach Out Deck.pdf";
 
 export default inngest.createFunction(
-  { id: "send-campaign", retries: 3 },
+  {
+    id: "send-campaign",
+    retries: 3,
+    onFailure: async ({ event, error }) => {
+      // Update campaign status to ERROR on failure
+      const { campaignId } = event.data.event.data;
+      await supabase
+        .from("campaigns")
+        .update({
+          status: Campaigns.Status.ERROR,
+          error: error.message || "Campaign execution failed",
+        })
+        .eq("id", campaignId);
+      console.error(`[Send Campaign] Campaign ${campaignId} failed:`, error);
+    },
+  },
   { event: "campaign/start" },
   async ({ event, step }) => {
+    // Extract campaignId from event data
     const { campaignId } = event.data;
-    console.log(`[Send Campaign] Starting campaign: ${campaignId}`);
 
     // Step 1: Fetch campaign details
     const campaign = await step.run("fetch-campaign", async () => {
@@ -37,6 +52,7 @@ export default inngest.createFunction(
           `[Send Campaign] Campaign not found: ${campaignId}`,
           error,
         );
+        // Throwing NonRetriableError will prevent retries and mark the job as failed immediately
         throw new NonRetriableError(`Campaign not found: ${campaignId}`);
       }
       return data;
@@ -46,27 +62,23 @@ export default inngest.createFunction(
     if (campaign.scheduled_at) {
       const scheduledDate = new Date(campaign.scheduled_at);
       if (scheduledDate > new Date()) {
-        console.log(
-          `[Send Campaign] Scheduling campaign for: ${scheduledDate.toISOString()}`,
-        );
         await step.sleepUntil("wait-for-schedule", scheduledDate);
       }
     }
 
-    // Step 2: Update campaign status to running
-    await step.run("update-status-running", async () => {
-      console.log(`[Send Campaign] Updating status to running: ${campaignId}`);
-      await supabase
-        .from("campaigns")
-        .update({ status: "running" })
-        .eq("id", campaignId);
-    });
+    // Step 2: Update campaign status to running (only if it was scheduled)
+    // If campaign was "send now", it's already marked as running in startCampaign
+    if (campaign.status === Campaigns.Status.SCHEDULED) {
+      await step.run("update-status-running", async () => {
+        await supabase
+          .from("campaigns")
+          .update({ status: Campaigns.Status.RUNNING })
+          .eq("id", campaignId);
+      });
+    }
 
     // Step 3: Fetch campaign accounts (Gmail senders)
     const accounts = await step.run("fetch-accounts", async () => {
-      console.log(
-        `[Send Campaign] Fetching accounts for campaign: ${campaignId}`,
-      );
       const { data } = await supabase
         .from("campaign_accounts")
         .select("account_id, accounts(*)")
@@ -74,10 +86,8 @@ export default inngest.createFunction(
       return data || [];
     });
 
+    // check if accounts are available
     if (accounts.length === 0) {
-      console.warn(
-        `[Send Campaign] No accounts found for campaign: ${campaignId}`,
-      );
       throw new NonRetriableError(
         "No Gmail accounts associated with this campaign",
       );
@@ -85,13 +95,15 @@ export default inngest.createFunction(
 
     // Step 4: Fetch pending leads for this campaign from campaign_leads table
     const campaignLeads = await step.run("fetch-leads", async () => {
-      console.log(
-        `[Send Campaign] Fetching pending leads for campaign: ${campaignId}`,
-      );
       // Join campaign_leads -> leads -> companies
+
+      /*
+        Basically, we are utilising the relationship between the campaign lead, lead and company to figure out whom to and what to send.
+      */
       const { data, error } = await supabase
         .from("campaign_leads")
-        .select(`
+        .select(
+          `
           *,
           leads!inner (
             id,
@@ -106,12 +118,12 @@ export default inngest.createFunction(
               email_subject
             )
           )
-        `)
+        `,
+        )
         .eq("campaign_id", campaignId)
-        .eq("status", "pending");
+        .eq("status", Campaigns.LeadStatus.PENDING);
 
       if (error) {
-        console.error("[Send Campaign] Error fetching leads:", error);
         throw new Error(error.message);
       }
 
@@ -120,21 +132,20 @@ export default inngest.createFunction(
 
     console.log(`[Send Campaign] Found ${campaignLeads.length} pending leads`);
 
-    // Step 4.5: Fetch default email template for the user
-    // ... (unchanged)
-    const defaultTemplate = await step.run("fetch-default-template", async () => {
-      const { data } = await supabase
-        .from("email_templates")
-        .select("subject, body")
-        .eq("user_id", campaign.user_id)
-        .eq("is_default", true)
-        .single();
-      return data;
-    });
+    // Check if there are any leads to process
+    if (campaignLeads.length === 0) {
+      console.warn(`[Send Campaign] No pending leads found for campaign ${campaignId}`);
+      await supabase
+        .from("campaigns")
+        .update({ status: Campaigns.Status.COMPLETED })
+        .eq("id", campaignId);
+      return { success: true, emailsSent: 0 };
+    }
 
     // Read PDF attachment once for all emails
-    const pdfBuffer = fs.readFileSync(path.join(process.cwd(), "public", ATTACHMENT_PDF));
-    console.log(`[Send Campaign] PDF attachment loaded: ${ATTACHMENT_PDF}`);
+    const pdfBuffer = fs.readFileSync(
+      path.join(process.cwd(), "public", ATTACHMENT_PDF),
+    );
 
     // Step 5: Send emails - distribute across accounts (round-robin or pre-assigned)
     // In new architecture, account is pre-assigned in campaign_leads.assigned_account_id
@@ -143,27 +154,36 @@ export default inngest.createFunction(
     // We can map account_id to account object.
 
     const accountMap = new Map(
-      accounts.map((a: any) => [a.account_id, a.accounts])
+      accounts.map((a: any) => [a.account_id, a.accounts]),
     );
+
+    // Track successful sends
+    let successfulSends = 0;
 
     for (const item of campaignLeads) {
       // item.leads is the lead data
       // item.assigned_account_id is the account to use
       const lead = item.leads;
       // Handle the case where companies might be an array or object depending on relation
-      const company = Array.isArray(lead.companies) ? lead.companies[0] : lead.companies;
+      const company = Array.isArray(lead.companies)
+        ? lead.companies[0]
+        : lead.companies;
       // Normalize lead object for template replacement
       const leadForTemplate = {
         ...lead,
         company: company?.name || lead.company || "",
-        companies: company // Ensure nested structure if needed
+        companies: company, // Ensure nested structure if needed
       };
 
       const account = accountMap.get(item.assigned_account_id);
 
       if (!account) {
-        console.warn(`[Send Campaign] No account found for assigned_id ${item.assigned_account_id}, skipping lead ${lead.email}`);
-        continue;
+        console.error(
+          `[Send Campaign] No account found for assigned_id ${item.assigned_account_id}`,
+        );
+        throw new NonRetriableError(
+          `Gmail account not found for assigned_account_id: ${item.assigned_account_id}`,
+        );
       }
 
       await step.run(`send-email-${item.id}`, async () => {
@@ -172,28 +192,18 @@ export default inngest.createFunction(
             `[Send Campaign] Sending email to ${lead.email} via ${account.email}`,
           );
           // Generate email content
-          let subject: string;
-          let body: string;
-
-          // Prefer Company-specific templates -> DB Default -> Hardcoded Default
-          let subjectTemplate = company?.email_subject;
-          let bodyTemplate = company?.email_template;
-
-          if (!subjectTemplate || !bodyTemplate) {
-            if (defaultTemplate) {
-              subjectTemplate = subjectTemplate || defaultTemplate.subject;
-              bodyTemplate = bodyTemplate || defaultTemplate.body;
-            } else {
-              subjectTemplate = subjectTemplate || DEFAULT_EMAIL_SUBJECT;
-              bodyTemplate = bodyTemplate || DEFAULT_EMAIL_BODY;
-            }
-          }
+          // Company must have templates ready - no fallback
+          const subjectTemplate = company?.email_subject;
+          const bodyTemplate = company?.email_template;
 
           if (!subjectTemplate || !bodyTemplate) {
             throw new Error(
-              `Missing email template for company: ${company?.name || "Unknown"}`,
+              `Company "${company?.name || "Unknown"}" does not have email templates ready. Please complete enrichment before starting campaign.`,
             );
           }
+
+          let subject: string;
+          let body: string;
 
           // User requested NO dynamic replacement for the subject line
           subject = subjectTemplate; // replaceTemplateVars(subjectTemplate, leadForTemplate);
@@ -210,9 +220,9 @@ export default inngest.createFunction(
 
           // Create email message with PDF attachment
           // Use item.id (campaign_lead id) for tracking pixel instead of lead.id to track specific campaign send?
-          // Or keep lead.id? Typically you track the specific send. 
-          // But existing tracker might expect lead.id. 
-          // Let's stick to lead.id for now or update tracker later. 
+          // Or keep lead.id? Typically you track the specific send.
+          // But existing tracker might expect lead.id.
+          // Let's stick to lead.id for now or update tracker later.
           // Actually, if we use campaign_leads, we should probably track campaign_leads.id.
           // But for minimal breakage, let's use lead.id for now, OR update this if user asks.
           // User asked for "stable architecture".
@@ -229,7 +239,7 @@ export default inngest.createFunction(
             lead.email,
             subject,
             body +
-            `<br/><img src="${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/track/open?id=${item.id}&type=campaign_lead" alt="" width="1" height="1" border="0" />`,
+              `<br/><img src="${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/track/open?id=${item.id}&type=campaign_lead" alt="" width="1" height="1" border="0" />`,
             pdfBuffer,
             ATTACHMENT_PDF,
           );
@@ -250,7 +260,7 @@ export default inngest.createFunction(
           await supabase
             .from("campaign_leads")
             .update({
-              status: "sent",
+              status: Campaigns.LeadStatus.SENT,
               sent_at: new Date().toISOString(),
               thread_id: res.data.threadId,
               message_id: res.data.id,
@@ -260,6 +270,7 @@ export default inngest.createFunction(
           console.log(
             `[Send Campaign] Email sent successfully to ${lead.email}`,
           );
+          successfulSends++;
         } catch (error: any) {
           console.error(
             `[Send Campaign] Failed to send email to ${lead.email}:`,
@@ -268,7 +279,7 @@ export default inngest.createFunction(
           await supabase
             .from("campaign_leads")
             .update({
-              status: "failed",
+              status: Campaigns.LeadStatus.FAILED,
               error: error.message || "Unknown error",
             })
             .eq("id", item.id);
@@ -279,18 +290,31 @@ export default inngest.createFunction(
       await step.sleep("rate-limit-delay", "2s");
     }
 
-    // Step 6: Update campaign status to completed
-    await step.run("update-status-completed", async () => {
-      console.log(
-        `[Send Campaign] Marking campaign ${campaignId} as completed`,
-      );
-      await supabase
-        .from("campaigns")
-        .update({ status: "completed" })
-        .eq("id", campaignId);
+    // Step 6: Update campaign status based on results
+    await step.run("update-final-status", async () => {
+      if (successfulSends === 0) {
+        console.log(
+          `[Send Campaign] All emails failed for campaign ${campaignId}, marking as ERROR`,
+        );
+        await supabase
+          .from("campaigns")
+          .update({ 
+            status: Campaigns.Status.ERROR,
+            error: "All email sends failed"
+          })
+          .eq("id", campaignId);
+      } else {
+        console.log(
+          `[Send Campaign] Marking campaign ${campaignId} as completed (${successfulSends}/${campaignLeads.length} sent)`,
+        );
+        await supabase
+          .from("campaigns")
+          .update({ status: Campaigns.Status.COMPLETED })
+          .eq("id", campaignId);
+      }
     });
 
     console.log(`[Send Campaign] Campaign execution finished: ${campaignId}`);
-    return { success: true, emailsSent: campaignLeads.length };
+    return { success: true, emailsSent: successfulSends, totalLeads: campaignLeads.length };
   },
 );

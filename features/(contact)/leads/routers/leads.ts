@@ -12,14 +12,6 @@ export const leadsRouter = router({
                     name,
                     domain,
                     logo_url
-                ),
-                lead_tags (
-                    tag_id,
-                    tags (
-                        id,
-                        name,
-                        color
-                    )
                 )
             `)
             .order('created_at', { ascending: false });

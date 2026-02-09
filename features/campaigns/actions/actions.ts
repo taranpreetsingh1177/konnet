@@ -3,13 +3,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { inngest } from "@/lib/inngest/client";
 import { revalidatePath } from "next/cache";
+import { Campaigns } from "@/features/campaigns/lib/constants";
 
 export type CreateCampaignInput = {
   name: string;
-  subject_template: string;
-  body_template: string;
-  use_ai: boolean;
-  ai_prompt?: string;
   account_ids: string[];
   company_ids: string[];
   scheduled_at?: string;
@@ -43,12 +40,7 @@ export async function createCampaign(input: CreateCampaignInput) {
       .insert({
         user_id: user.id,
         name: input.name,
-        subject_template:
-          input.subject_template || "See company specific template",
-        body_template: input.body_template || "See company specific template",
-        use_ai: input.use_ai,
-        ai_prompt: input.ai_prompt || null,
-        status: "draft",
+        status: Campaigns.Status.DRAFT,
         scheduled_at: input.scheduled_at || null,
       })
       .select()
@@ -112,6 +104,7 @@ export async function createCampaign(input: CreateCampaignInput) {
     }
 
     revalidatePath("/dashboard/campaigns");
+
     return { success: true, campaignId: campaign.id };
   } catch (error: any) {
     console.error("Error creating campaign:", error);
@@ -145,10 +138,13 @@ export async function startCampaign(campaignId: string) {
     return { success: false, error: "Campaign has already been started" };
   }
 
-  // Update status to scheduled
   await supabase
     .from("campaigns")
-    .update({ status: "scheduled" })
+    .update({
+      status: campaign.scheduled_at
+        ? Campaigns.Status.SCHEDULED
+        : Campaigns.Status.RUNNING,
+    })
     .eq("id", campaignId);
 
   // Trigger Inngest event and capture run IDs
@@ -195,18 +191,21 @@ export async function cancelCampaign(campaignId: string) {
   if (campaign.inngest_run_ids && campaign.inngest_run_ids.length > 0) {
     try {
       // Cancel via Inngest API
-      const inngestApiKey = process.env.INNGEST_EVENT_KEY || process.env.INNGEST_SIGNING_KEY;
+      const inngestApiKey =
+        process.env.INNGEST_EVENT_KEY || process.env.INNGEST_SIGNING_KEY;
 
       if (!inngestApiKey) {
-        console.warn('No Inngest API key found, cannot cancel runs programmatically');
+        console.warn(
+          "No Inngest API key found, cannot cancel runs programmatically",
+        );
       } else {
         for (const runId of campaign.inngest_run_ids) {
           try {
             await fetch(`https://api.inngest.com/v1/runs/${runId}/cancel`, {
-              method: 'POST',
+              method: "POST",
               headers: {
-                'Authorization': `Bearer ${inngestApiKey}`,
-                'Content-Type': 'application/json',
+                Authorization: `Bearer ${inngestApiKey}`,
+                "Content-Type": "application/json",
               },
             });
           } catch (err) {
@@ -223,7 +222,7 @@ export async function cancelCampaign(campaignId: string) {
   // Update campaign status to cancelled
   const { error: campaignError } = await supabase
     .from("campaigns")
-    .update({ status: "cancelled" })
+    .update({ status: Campaigns.Status.CANCELLED })
     .eq("id", campaignId);
 
   if (campaignError) {
@@ -233,9 +232,9 @@ export async function cancelCampaign(campaignId: string) {
   // Update pending campaign_leads to cancelled
   await supabase
     .from("campaign_leads")
-    .update({ status: "cancelled" })
+    .update({ status: Campaigns.LeadStatus.CANCELLED })
     .eq("campaign_id", campaignId)
-    .eq("status", "pending");
+    .eq("status", Campaigns.LeadStatus.PENDING);
 
   revalidatePath("/dashboard/campaigns");
   return { success: true };
@@ -325,7 +324,7 @@ export async function getCompaniesForCampaign() {
         .eq("user_id", user.id);
 
       // Available leads is now essentially Total Leads since we support multiple campaigns
-      // and history is tracked in campaign_leads. 
+      // and history is tracked in campaign_leads.
       // Technically we could filter out leads currently in 'running' campaigns but for simplicity
       // and to match the "fresh start" requirement on campaign deletion, we treat all as available.
 
