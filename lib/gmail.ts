@@ -20,12 +20,52 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
  * Retrieves the OAuth2 client for a specific user.
  * @param userId The Supabase User ID
  */
+/**
+ * Creates a Gmail client from a specific account record.
+ * Handles token refresh events and updates the database by Account ID.
+ */
+export async function createGmailClient(account: any) {
+    // 1. Setup Google Auth
+    const oauth2Client = new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        // process.env.NEXT_PUBLIC_APP_URL
+    );
+
+    // 2. Set credentials
+    oauth2Client.setCredentials({
+        refresh_token: account.refresh_token,
+        access_token: account.access_token,
+        expiry_date: account.expires_at ? Number(account.expires_at) * 1000 : undefined,
+    });
+
+    // 3. Handle token refresh events
+    oauth2Client.on('tokens', async (tokens) => {
+        if (tokens.access_token) {
+            console.log(`Refreshing Gmail tokens for account ${account.id}`);
+            await supabaseAdmin
+                .from('accounts')
+                .update({
+                    access_token: tokens.access_token,
+                    expires_at: Math.floor((tokens.expiry_date || Date.now()) / 1000),
+                    ...(tokens.refresh_token && { refresh_token: tokens.refresh_token }),
+                })
+                .eq('id', account.id); // Update by Account ID
+        }
+    });
+
+    return google.gmail({ version: 'v1', auth: oauth2Client });
+}
+
+/**
+ * Retrieves the OAuth2 client for a specific user.
+ * @param userId The Supabase User ID
+ */
 export async function getGmailClient(userId: string) {
     // 1. Fetch the user's refresh token from the 'accounts' table
-    // Assuming 'accounts' table stores providers. We need to find the google provider entry.
     const { data: account, error } = await supabaseAdmin
         .from('accounts')
-        .select('access_token, refresh_token, expires_at')
+        .select('*') // Select all to get ID
         .eq('user_id', userId)
         .eq('provider', 'google')
         .single();
@@ -34,40 +74,7 @@ export async function getGmailClient(userId: string) {
         throw new Error(`Could not find Google account for user ${userId}: ${error?.message}`);
     }
 
-    // 2. Setup Google Auth
-    const oauth2Client = new google.auth.OAuth2(
-        process.env.GOOGLE_CLIENT_ID,
-        process.env.GOOGLE_CLIENT_SECRET,
-        process.env.NEXT_PUBLIC_APP_URL // Redirect URL (mostly irrelevant for backend-only calls but required for init)
-    );
-
-    // 3. Set credentials
-    oauth2Client.setCredentials({
-        refresh_token: account.refresh_token,
-        access_token: account.access_token, // Optional, but good if valid
-        expiry_date: account.expires_at ? Number(account.expires_at) * 1000 : undefined, // Check if your DB stores seconds or ms
-    });
-
-    // 4. Handle token refresh events (optional, googleapis does this automatically if refresh_token is present)
-    oauth2Client.on('tokens', async (tokens) => {
-        if (tokens.access_token) {
-            // Update the access token in the database
-            // This is a simplified example. In production, handle potential race conditions.
-            await supabaseAdmin
-                .from('accounts')
-                .update({
-                    access_token: tokens.access_token,
-                    expires_at: Math.floor((tokens.expiry_date || Date.now()) / 1000), // Store as seconds
-                    // If a new refresh token is provided, update it too
-                    ...(tokens.refresh_token && { refresh_token: tokens.refresh_token }),
-                })
-                .eq('user_id', userId)
-                .eq('provider', 'google');
-        }
-    });
-
-    // 5. Return the Gmail client
-    return google.gmail({ version: 'v1', auth: oauth2Client });
+    return createGmailClient(account);
 }
 
 /**

@@ -9,6 +9,7 @@ export type CreateCampaignInput = {
   name: string;
   account_ids: string[];
   company_ids: string[];
+  tag?: string;
   scheduled_at?: string;
 };
 
@@ -29,8 +30,11 @@ export async function createCampaign(input: CreateCampaignInput) {
     };
   }
 
-  if (input.company_ids.length === 0) {
-    return { success: false, error: "Please select at least one company" };
+  if (input.company_ids.length === 0 && !input.tag) {
+    return {
+      success: false,
+      error: "Please select at least one company or a tag",
+    };
   }
 
   try {
@@ -65,13 +69,23 @@ export async function createCampaign(input: CreateCampaignInput) {
       console.error("Error adding campaign accounts:", accountsError);
     }
 
-    // Fetch leads from selected companies
-    // We fetch ALL leads for the company, as we maintain history in campaign_leads
-    const { data: leads } = await supabase
-      .from("leads")
-      .select("id")
-      .in("company_id", input.company_ids)
-      .eq("user_id", user.id);
+    // Fetch leads from selected companies or tag
+    // We fetch ALL leads matching criteria
+    let leads;
+
+    if (input.tag) {
+      const { data } = await supabase
+        .from("leads")
+        .select("id")
+        .eq("tag", input.tag)
+      leads = data;
+    } else {
+      const { data } = await supabase
+        .from("leads")
+        .select("id")
+        .in("company_id", input.company_ids)
+      leads = data;
+    }
 
     if (!leads || leads.length === 0) {
       // Delete the campaign if no leads found (rollback-ish)

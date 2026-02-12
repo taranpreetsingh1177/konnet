@@ -19,6 +19,7 @@ const createContext = cache(async () => {
 
 const getQueryClient = cache(() => new QueryClient());
 
+console.log("AppRouter keys:", Object.keys(appRouter._def.procedures));
 const createCaller = createCallerFactory(appRouter);
 
 export const { trpc: serverTrpc, HydrateClient } = createHydrationHelpers<typeof appRouter>(

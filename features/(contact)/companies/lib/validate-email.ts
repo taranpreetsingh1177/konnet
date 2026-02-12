@@ -44,14 +44,19 @@ export async function validateEmailContent(
 ): Promise<{ isValid: boolean; reason?: string }> {
   try {
     const prompt = `You are a Quality Assurance AI for an email automation system.
-Your task is to validate the following cold email content.
+Your task is to validate an EMAIL TEMPLATE.
+
+CRITICAL INSTRUCTIONS:
+1. This is a TEMPLATE, so {{name}} placeholders MUST be present. DO NOT flag them as errors.
+2. Malformed placeholders like <insert here> or [Name] ARE errors. {{name}} is CORRECT.
+3. The email signature might only contain a name/title and not a full closing block. This is acceptable.
+4. {{company}} placeholder is not a valid placeholder. The email generator should have already replaced it with the company name.
 
 Check for these CRITICAL FAILURES:
-1. Malformed placeholders (e.g., {{name}}, {company_name} left unreplaced).
-2. Empty or missing sections.
-3. Text that looks like a prompt or raw JSON (e.g., "Here is the email:", "{"subject":...").
-4. Offensive or completely nonsensical text.
-5. Large blocks of Lorem Ipsum or placeholder text.
+- Broken logic or implementation (e.g., raw JSON code visible).
+- Offensive or completely nonsensical text.
+- Large blocks of Lorem Ipsum.
+- Unreplaced "prompt-like" placeholders (e.g., "[Insert Company Name Here]").
 
 EMAIL SUBJECT: "${subject}"
 EMAIL BODY (HTML):

@@ -15,7 +15,7 @@ export type LeadInput = {
   custom_fields?: Record<string, string>;
 };
 
-export async function createLeads(leads: LeadInput[]) {
+export async function createLeads(leads: LeadInput[], tag?: string) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -26,6 +26,8 @@ export async function createLeads(leads: LeadInput[]) {
   }
 
   try {
+    console.log(`[createLeads] Processing ${leads.length} leads with tag: "${tag || 'none'}"`);
+
     // Step 1: Extract unique companies from leads
     const uniqueCompanies = new Map<string, { name: string; domain: string }>();
 
@@ -47,6 +49,8 @@ export async function createLeads(leads: LeadInput[]) {
       }
     });
 
+    console.log(`[createLeads] Found ${uniqueCompanies.size} unique companies related to leads`);
+
     // Step 2: Create companies using Supabase directly with service role key
     const companyNameToIdMap = new Map<string, string>();
     const newCompanyIds: string[] = [];
@@ -63,15 +67,20 @@ export async function createLeads(leads: LeadInput[]) {
 
       for (const [companyName, companyData] of uniqueCompanies) {
         // Check if company exists
-        const { data: existing } = await adminSupabase
+        const { data: existing, error: fetchError } = await adminSupabase
           .from("companies")
           .select("id")
           .eq("domain", companyData.domain)
           .single();
 
+        if (fetchError && fetchError.code !== 'PGRST116') {
+          console.error(`[createLeads] Error checking company ${companyName}:`, fetchError);
+        }
+
         if (existing) {
           companyNameToIdMap.set(companyName, existing.id);
         } else {
+          console.log(`[createLeads] Creating new company: ${companyName}`);
           // Create new company
           const { data: newCompany, error: companyError } = await adminSupabase
             .from("companies")
@@ -85,7 +94,7 @@ export async function createLeads(leads: LeadInput[]) {
             .single();
 
           if (companyError) {
-            console.error("Error creating company:", companyError);
+            console.error(`[createLeads] Error creating company ${companyName}:`, companyError);
             continue;
           }
 
@@ -97,18 +106,25 @@ export async function createLeads(leads: LeadInput[]) {
       }
     }
 
+    console.log(`[createLeads] Mapped ${companyNameToIdMap.size} companies to IDs`);
+
     // Step 3: Insert leads with company_id
-    const leadsToInsert = leads.map((lead) => ({
-      user_id: user.id,
-      email: lead.email,
-      linkedin_url: lead.linkedin_url || null,
-      name: lead.name || null,
-      company_id: lead.company
-        ? companyNameToIdMap.get(lead.company.trim()) || null
-        : null,
-      role: lead.role || null,
-      custom_fields: lead.custom_fields || {},
-    }));
+    const leadsToInsert = leads.map((lead) => {
+      const companyId = lead.company ? companyNameToIdMap.get(lead.company.trim()) || null : null;
+      if (lead.company && !companyId) {
+        console.warn(`[createLeads] Warning: Lead ${lead.email} has company "${lead.company}" but no ID found in map.`);
+      }
+      return {
+        user_id: user.id,
+        email: lead.email,
+        linkedin_url: lead.linkedin_url || null,
+        name: lead.name || null,
+        company_id: companyId,
+        role: lead.role || null,
+        custom_fields: lead.custom_fields || {},
+        tag: tag || null,
+      };
+    });
 
     const { data: insertedLeads, error: leadsError } = await supabase
       .from("leads")
@@ -214,3 +230,28 @@ export async function updateLead(leadId: string, updates: Partial<LeadInput>) {
   revalidatePath("/dashboard/leads");
   return { success: true };
 }
+
+export async function getUniqueTags() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return [];
+
+  const { data } = await supabase
+    .from("leads")
+    .select("tag")
+    .eq("user_id", user.id)
+    .not("tag", "is", null);
+
+  if (!data) return [];
+
+  // Filter out duplicates and empty strings
+  const tags = new Set(
+    data.map((d) => d.tag).filter((t): t is string => !!t && t.trim() !== ""),
+  );
+
+  return Array.from(tags).sort();
+}
+

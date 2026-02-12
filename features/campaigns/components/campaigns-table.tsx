@@ -101,9 +101,11 @@ type SortOrder = "asc" | "desc";
 interface CampaignsTableProps {
   accounts: any[];
   companies: any[];
+  tags: string[];
 }
 
-export function CampaignsTable({ accounts, companies }: CampaignsTableProps) {
+export function CampaignsTable({ accounts, companies, tags }: CampaignsTableProps) {
+
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [startingCampaign, setStartingCampaign] = useState<string | null>(null);
@@ -356,8 +358,10 @@ export function CampaignsTable({ accounts, companies }: CampaignsTableProps) {
           <CreateCampaignModal
             accounts={accounts}
             companies={companies}
+            tags={tags}
             onSuccess={() => refetch()}
           />
+
         </div>
       </div>
 

@@ -84,12 +84,28 @@ export function CredentialsTable() {
                             Disconnect ({selectedRows.size})
                         </Button>
                     )}
-                    <Link href="/api/google/connect">
-                        <Button size="sm" className="h-9 bg-blue-500 hover:bg-blue-600">
-                            <Plus className="w-4 h-4 mr-2" />
-                            Connect Account
-                        </Button>
-                    </Link>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger >
+                            <Button size="sm" className="h-9 bg-blue-500 hover:bg-blue-600">
+                                <Plus className="w-4 h-4 mr-2" />
+                                Connect Account
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuItem>
+                                <Link href="/api/google/connect" className="flex items-center cursor-pointer">
+                                    <Mail className="w-4 h-4 mr-2" />
+                                    Connect Gmail
+                                </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem>
+                                <Link href="/api/outlook/connect" className="flex items-center cursor-pointer">
+                                    <Mail className="w-4 h-4 mr-2 text-blue-600" />
+                                    Connect Outlook
+                                </Link>
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </div>
             </div>
 
@@ -149,13 +165,29 @@ export function CredentialsTable() {
                                             <Mail className="w-6 h-6" />
                                         </div>
                                         <p>No accounts connected</p>
-                                        <p className="text-sm">Connect a Gmail account to start sending campaigns</p>
-                                        <Link href="/api/google/connect">
-                                            <Button size="sm" className="mt-2 bg-blue-500 hover:bg-blue-600">
-                                                <Plus className="w-4 h-4 mr-2" />
-                                                Connect Account
-                                            </Button>
-                                        </Link>
+                                        <p className="text-sm">Connect a Gmail or Outlook account to start sending campaigns</p>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger>
+                                                <Button size="sm" className="mt-2 bg-blue-500 hover:bg-blue-600">
+                                                    <Plus className="w-4 h-4 mr-2" />
+                                                    Connect Account
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="center">
+                                                <DropdownMenuItem >
+                                                    <Link href="/api/google/connect" className="flex items-center cursor-pointer">
+                                                        <Mail className="w-4 h-4 mr-2" />
+                                                        Connect Gmail
+                                                    </Link>
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem >
+                                                    <Link href="/api/outlook/connect" className="flex items-center cursor-pointer">
+                                                        <Mail className="w-4 h-4 mr-2 text-blue-600" />
+                                                        Connect Outlook
+                                                    </Link>
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
                                     </div>
                                 </td>
                             </tr>
@@ -187,10 +219,17 @@ export function CredentialsTable() {
                                         </div>
                                     </td>
                                     <td className="px-3 py-3">
-                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-neutral-100 text-neutral-600">
-                                            <img src="/logos/gmail.svg" alt="Gmail" className="w-4 h-4" />
-                                            Gmail
-                                        </span>
+                                        {account.provider === 'outlook' ? (
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                                                <Mail className="w-3.5 h-3.5" />
+                                                Outlook
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-neutral-100 text-neutral-600 border border-neutral-200">
+                                                <img src="/logos/gmail.svg" alt="Gmail" className="w-3.5 h-3.5" />
+                                                Gmail
+                                            </span>
+                                        )}
                                     </td>
                                     <td className="px-3 py-3">
                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-600">

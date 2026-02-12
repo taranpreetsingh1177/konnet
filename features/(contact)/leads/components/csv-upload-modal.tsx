@@ -57,6 +57,7 @@ export function CSVUploadModal({ open: controlledOpen, onOpenChange: controlledO
   const [error, setError] = useState<string | null>(null);
   const [importedCount, setImportedCount] = useState(0);
   const [companiesCreated, setCompaniesCreated] = useState(0);
+  const [tagName, setTagName] = useState("");
 
   const handleFileUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -192,7 +193,7 @@ export function CSVUploadModal({ open: controlledOpen, onOpenChange: controlledO
           };
         });
 
-      const result = await createLeads(leads);
+      const result = await createLeads(leads, tagName);
 
       if (result.success) {
         setImportedCount(result.count || 0);
@@ -223,6 +224,7 @@ export function CSVUploadModal({ open: controlledOpen, onOpenChange: controlledO
     setError(null);
     setImportedCount(0);
     setCompaniesCreated(0);
+    setTagName("");
   };
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -403,6 +405,20 @@ export function CSVUploadModal({ open: controlledOpen, onOpenChange: controlledO
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 items-center border-t pt-4 mt-2">
+                  <div className="space-y-1">
+                    <Label>Custom Tag (Optional)</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Assign a tag to all imported leads (e.g. "Event 2024")
+                    </p>
+                  </div>
+                  <Input
+                    placeholder="Enter tag name..."
+                    value={tagName}
+                    onChange={(e) => setTagName(e.target.value)}
+                  />
                 </div>
               </div>
 

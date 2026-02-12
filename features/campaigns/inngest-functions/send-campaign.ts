@@ -1,9 +1,10 @@
 import { inngest } from "@/lib/inngest/client";
 import { createClient } from "@supabase/supabase-js";
-import { google as googleAPI } from "googleapis";
 import { NonRetriableError } from "inngest";
 import fs from "node:fs";
 import path from "node:path";
+import { google } from "googleapis";
+import { createOutlookClient } from "@/lib/outlook";
 import { createEmailWithAttachment } from "@/lib/email/mime-builder";
 import { replaceTemplateVars } from "@/features/(contact)/companies/lib/generate-email";
 import { Campaigns } from "../lib/constants";
@@ -189,7 +190,7 @@ export default inngest.createFunction(
       await step.run(`send-email-${item.id}`, async () => {
         try {
           console.log(
-            `[Send Campaign] Sending email to ${lead.email} via ${account.email}`,
+            `[Send Campaign] Sending email to ${lead.email} via ${account.email} (${account.provider || "gmail"})`,
           );
           // Generate email content
           // Company must have templates ready - no fallback
@@ -206,55 +207,88 @@ export default inngest.createFunction(
           let body: string;
 
           // User requested NO dynamic replacement for the subject line
-          subject = subjectTemplate; // replaceTemplateVars(subjectTemplate, leadForTemplate);
+          subject = subjectTemplate;
           body = replaceTemplateVars(bodyTemplate, leadForTemplate);
 
-          // Create Gmail client
-          const oauth2Client = new googleAPI.auth.OAuth2(
-            process.env.GOOGLE_CLIENT_ID,
-            process.env.GOOGLE_CLIENT_SECRET,
-          );
-          oauth2Client.setCredentials({ refresh_token: account.refresh_token });
+          const trackingPixel = `<br/><img src="${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/track/open?id=${item.id}&type=campaign_lead" alt="" width="1" height="1" border="0" />`;
+          const finalBody = body + trackingPixel;
 
-          const gmail = googleAPI.gmail({ version: "v1", auth: oauth2Client });
+          let threadId = null;
+          let messageId = null;
 
-          // Create email message with PDF attachment
-          // Use item.id (campaign_lead id) for tracking pixel instead of lead.id to track specific campaign send?
-          // Or keep lead.id? Typically you track the specific send.
-          // But existing tracker might expect lead.id.
-          // Let's stick to lead.id for now or update tracker later.
-          // Actually, if we use campaign_leads, we should probably track campaign_leads.id.
-          // But for minimal breakage, let's use lead.id for now, OR update this if user asks.
-          // User asked for "stable architecture".
-          // Tracking `campaign_leads.id` allows tracking WHICH campaign run was opened.
-          // But `api/track/open` likely looks up by ID. If it looks up `leads` table, it will fail if I pass `campaign_leads.id`.
-          // I'll stick to `lead.id` for the tracker URL for now to be safe, unless tracker uses `campaign_leads` too.
-          // Wait, status update happens on `campaign_leads`.
-          // If `api/track/open` updates `leads` table, the status in `campaign_leads` won't update!
-          // This is a disconnect. I should check `api/track/open`.
-          // For now, I'll update `campaign_leads` here for 'sent' status.
+          if (account.provider === "outlook") {
+            // Outlook Sending Logic
+            const client = await createOutlookClient(account);
 
-          const message = createEmailWithAttachment(
-            account.email,
-            lead.email,
-            subject,
-            body +
-              `<br/><img src="${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/track/open?id=${item.id}&type=campaign_lead" alt="" width="1" height="1" border="0" />`,
-            pdfBuffer,
-            ATTACHMENT_PDF,
-          );
+            const sendMail = {
+              message: {
+                subject: subject,
+                body: {
+                  contentType: "HTML",
+                  content: finalBody,
+                },
+                toRecipients: [
+                  {
+                    emailAddress: {
+                      address: lead.email,
+                    },
+                  },
+                ],
+                attachments: [
+                  {
+                    "@odata.type": "#microsoft.graph.fileAttachment",
+                    name: ATTACHMENT_PDF,
+                    contentBytes: pdfBuffer.toString("base64"),
+                  },
+                ],
+              },
+              saveToSentItems: "true",
+            };
 
-          const encodedMessage = Buffer.from(message)
-            .toString("base64")
-            .replace(/\+/g, "-")
-            .replace(/\//g, "_")
-            .replace(/=+$/, "");
+            await client.api("/me/sendMail").post(sendMail);
+            // Graph API sendMail does not return the message ID directly usually. 
+            // We might need to make a separate call if we need it, or ignore it.
+            // For now, we leave message_id null or approximate it.
+            // Actually, we can assume success if no error.
+          } else {
+            // Gmail Sending Logic (Default)
+            if (!account.refresh_token) {
+              console.error(`[Send Campaign] Account ${account.id} (${account.email}) is missing refresh token!`);
+              throw new Error("Missing refresh token for Gmail account");
+            }
 
-          // Send email
-          const res = await gmail.users.messages.send({
-            userId: "me",
-            requestBody: { raw: encodedMessage },
-          });
+            // Create Gmail client manually as per previous working version
+            const oauth2Client = new google.auth.OAuth2(
+              process.env.GOOGLE_CLIENT_ID,
+              process.env.GOOGLE_CLIENT_SECRET,
+            );
+            oauth2Client.setCredentials({ refresh_token: account.refresh_token });
+
+            const gmail = google.gmail({ version: "v1", auth: oauth2Client });
+
+            const message = createEmailWithAttachment(
+              account.email,
+              lead.email,
+              subject,
+              finalBody,
+              pdfBuffer,
+              ATTACHMENT_PDF,
+            );
+
+            const encodedMessage = Buffer.from(message)
+              .toString("base64")
+              .replace(/\+/g, "-")
+              .replace(/\//g, "_")
+              .replace(/=+$/, "");
+
+            const res = await gmail.users.messages.send({
+              userId: "me",
+              requestBody: { raw: encodedMessage },
+            });
+
+            threadId = res.data.threadId;
+            messageId = res.data.id;
+          }
 
           // Update campaign_leads status
           await supabase
@@ -262,8 +296,8 @@ export default inngest.createFunction(
             .update({
               status: Campaigns.LeadStatus.SENT,
               sent_at: new Date().toISOString(),
-              thread_id: res.data.threadId,
-              message_id: res.data.id,
+              thread_id: threadId,
+              message_id: messageId,
             })
             .eq("id", item.id);
 
@@ -298,11 +332,15 @@ export default inngest.createFunction(
         );
         await supabase
           .from("campaigns")
-          .update({ 
+          .update({
             status: Campaigns.Status.ERROR,
             error: "All email sends failed"
           })
           .eq("id", campaignId);
+
+        return {
+          marked: 'Failed Campaign'
+        }
       } else {
         console.log(
           `[Send Campaign] Marking campaign ${campaignId} as completed (${successfulSends}/${campaignLeads.length} sent)`,
@@ -311,6 +349,10 @@ export default inngest.createFunction(
           .from("campaigns")
           .update({ status: Campaigns.Status.COMPLETED })
           .eq("id", campaignId);
+
+        return {
+          marked: 'Successful Campaign'
+        }
       }
     });
 
