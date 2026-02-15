@@ -5,6 +5,8 @@ import { CompaniesTable } from "@/features/(contact)/companies/components/compan
 import { CompaniesTableLoading } from "@/features/(contact)/companies/components/companies-table-loading";
 import { CompaniesTableError } from "@/features/(contact)/companies/components/companies-table-error";
 
+export const dynamic = 'force-dynamic';
+
 export default function CompaniesPage() {
 
     // prefetch companies data

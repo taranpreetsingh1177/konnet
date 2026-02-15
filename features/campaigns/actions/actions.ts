@@ -311,6 +311,25 @@ export async function getCompaniesForCampaign() {
 
   if (!user) return [];
 
+  // Step 1: Get lead counts per company in a SINGLE query (instead of N+1)
+  const { data: leadCounts } = await supabase
+    .from("leads")
+    .select("company_id")
+    .eq("user_id", user.id)
+    .not("company_id", "is", null);
+
+  if (!leadCounts || leadCounts.length === 0) return [];
+
+  // Count leads per company_id in memory
+  const countMap = new Map<string, number>();
+  for (const lead of leadCounts) {
+    if (lead.company_id) {
+      countMap.set(lead.company_id, (countMap.get(lead.company_id) || 0) + 1);
+    }
+  }
+
+  // Step 2: Only fetch companies that actually have leads
+  const companyIds = Array.from(countMap.keys());
   const { data: companies } = await supabase
     .from("companies")
     .select(
@@ -323,32 +342,18 @@ export async function getCompaniesForCampaign() {
             email_subject
         `,
     )
+    .in("id", companyIds)
     .order("name");
 
   if (!companies) return [];
 
-  // Get lead counts for these companies
-  const companiesWithCount = await Promise.all(
-    companies.map(async (c) => {
-      // Total leads
-      const { count: totalLeads } = await supabase
-        .from("leads")
-        .select("*", { count: "exact", head: true })
-        .eq("company_id", c.id)
-        .eq("user_id", user.id);
-
-      // Available leads is now essentially Total Leads since we support multiple campaigns
-      // and history is tracked in campaign_leads.
-      // Technically we could filter out leads currently in 'running' campaigns but for simplicity
-      // and to match the "fresh start" requirement on campaign deletion, we treat all as available.
-
-      return {
-        ...c,
-        leadCount: totalLeads || 0,
-        availableLeadCount: totalLeads || 0,
-      };
-    }),
-  );
-
-  return companiesWithCount.filter((c) => c.leadCount > 0);
+  // Step 3: Combine in memory — no extra queries needed
+  return companies.map((c) => {
+    const leadCount = countMap.get(c.id) || 0;
+    return {
+      ...c,
+      leadCount,
+      availableLeadCount: leadCount,
+    };
+  });
 }

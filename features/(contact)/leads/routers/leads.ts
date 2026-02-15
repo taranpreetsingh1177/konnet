@@ -14,7 +14,8 @@ export const leadsRouter = router({
                     logo_url
                 )
             `)
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false })
+            .limit(100);
 
         return data || [];
     }),

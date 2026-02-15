@@ -50,13 +50,6 @@ interface Campaign {
     account_id: string;
     accounts: { email: string } | null;
   }>;
-  campaign_leads: Array<{
-    id: string;
-    status: string;
-    sent_at: string | null;
-    opened_at: string | null;
-    error: string | null;
-  }>;
 }
 
 const statusConfig: Record<
@@ -458,20 +451,11 @@ export function CampaignsTable({ accounts, companies, tags }: CampaignsTableProp
                 (campaign: Campaign, index: number) => {
                   const StatusIcon =
                     statusConfig[campaign.status]?.icon || Clock;
-                  const sentCount =
-                    campaign.campaign_leads?.filter(
-                      (l) =>
-                        l.status === "sent" ||
-                        l.status === "opened" ||
-                        l.status === "replied",
-                    ).length || 0;
-                  const totalCount = campaign.campaign_leads?.length || 0;
-                  const failedCount =
-                    campaign.campaign_leads?.filter(
-                      (l) => l.status === "failed",
-                    ).length || 0;
-                  const progress =
-                    totalCount > 0 ? (sentCount / totalCount) * 100 : 0;
+                  const campaignLeads = (campaign as any).campaign_leads || [];
+                  const totalCount = campaignLeads.length;
+                  const sentCount = campaignLeads.filter((l: any) => l.status === "sent").length;
+                  const failedCount = campaignLeads.filter((l: any) => l.status === "failed").length;
+                  const progress = totalCount > 0 ? Math.round((sentCount / totalCount) * 100) : 0;
 
                   return (
                     <tr
@@ -521,23 +505,6 @@ export function CampaignsTable({ accounts, companies, tags }: CampaignsTableProp
                           <span className="text-xs text-gray-500">
                             {sentCount}/{totalCount}
                           </span>
-                          {failedCount > 0 && (
-                            <span
-                              className="text-xs text-red-500 flex items-center gap-0.5 cursor-help"
-                              title={Array.from(
-                                new Set(
-                                  campaign.campaign_leads
-                                    ?.filter(
-                                      (l) => l.status === "failed" && l.error,
-                                    )
-                                    .map((l) => l.error),
-                                ),
-                              ).join("\n")}
-                            >
-                              <AlertCircle className="w-3 h-3" />
-                              {failedCount}
-                            </span>
-                          )}
                         </div>
                       </td>
                       <td className="px-3 py-2">

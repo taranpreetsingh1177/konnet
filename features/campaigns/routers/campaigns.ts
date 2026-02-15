@@ -17,8 +17,7 @@ export const campaignsRouter = router({
                     id,
                     status,
                     sent_at,
-                    opened_at,
-                    error
+                    opened_at
                 )
             `,
       )

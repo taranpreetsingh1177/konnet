@@ -8,6 +8,9 @@
     "start": "next start",
     "lint": "eslint"
   },
+  "engines": {
+    "node": "20"
+  },
   "dependencies": {
     "@ai-sdk/google": "^3.0.20",
     "@ai-sdk/google-vertex": "^4.0.41",

@@ -239,19 +239,23 @@ export async function getUniqueTags() {
 
   if (!user) return [];
 
-  const { data } = await supabase
-    .from("leads")
-    .select("tag")
-    .eq("user_id", user.id)
-    .not("tag", "is", null);
+  // Use efficient server-side DISTINCT via RPC to avoid row limits
+  const { data, error } = await supabase
+    .rpc("get_unique_tags_v2", { p_user_id: user.id });
+
+  if (error) {
+    console.error("[getUniqueTags] RPC Error:", error);
+    // Return error as a tag for immediate UI feedback during debugging
+    return [`Error: ${error.message}`];
+  }
 
   if (!data) return [];
 
-  // Filter out duplicates and empty strings
-  const tags = new Set(
-    data.map((d) => d.tag).filter((t): t is string => !!t && t.trim() !== ""),
-  );
+  // Data is returned as [{ tag: "value" }, ...]
+  const tags = data
+    .map((d: any) => d.tag)
+    .filter((t: string) => t && t.trim() !== "")
+    .sort();
 
-  return Array.from(tags).sort();
+  return [...tags, `DEBUG: ${user.id} (${tags.length})`];
 }
-
