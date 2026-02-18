@@ -7,10 +7,15 @@ export async function sendMagicLink(formData: FormData) {
 
   const email = formData.get("email") as string;
 
+  // Ensure we use localhost in development to avoid production redirects
+  const appUrl = process.env.NODE_ENV === "production"
+    ? (process.env.NEXT_PUBLIC_APP_URL || "https://konnet.alvion.in")
+    : "http://localhost:3000";
+
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/callback`,
+      emailRedirectTo: `${appUrl}/auth/callback`,
     },
   });
 
@@ -25,10 +30,15 @@ export async function sendMagicLink(formData: FormData) {
 export async function signInWithGoogle() {
   const supabase = await createClient();
 
+  // Ensure we use localhost in development to avoid production redirects
+  const appUrl = process.env.NODE_ENV === "production"
+    ? (process.env.NEXT_PUBLIC_APP_URL || "https://konnet.alvion.in")
+    : "http://localhost:3000";
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/callback`,
+      redirectTo: `${appUrl}/auth/callback`,
     },
   });
 

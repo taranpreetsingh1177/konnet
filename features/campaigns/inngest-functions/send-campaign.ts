@@ -1,8 +1,6 @@
 import { inngest } from "@/lib/inngest/client";
 import { createClient } from "@supabase/supabase-js";
 import { NonRetriableError } from "inngest";
-import fs from "node:fs";
-import path from "node:path";
 import { google } from "googleapis";
 import { createOutlookClient } from "@/lib/outlook";
 import { createEmailWithAttachment } from "@/lib/email/mime-builder";
@@ -15,7 +13,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-const ATTACHMENT_PDF = "Project Reach Out Deck.pdf";
+const ATTACHMENT_PDF_NAME = "Project Reach Out Deck.pdf";
+const ATTACHMENT_PDF_URL =
+  "https://pub-d94398e714924e6fb66510c029cee3e8.r2.dev/pitch-deck/Project%20Reach%20Out%20Deck.pdf";
 
 export default inngest.createFunction(
   {
@@ -135,7 +135,9 @@ export default inngest.createFunction(
 
     // Check if there are any leads to process
     if (campaignLeads.length === 0) {
-      console.warn(`[Send Campaign] No pending leads found for campaign ${campaignId}`);
+      console.warn(
+        `[Send Campaign] No pending leads found for campaign ${campaignId}`,
+      );
       await supabase
         .from("campaigns")
         .update({ status: Campaigns.Status.COMPLETED })
@@ -143,10 +145,19 @@ export default inngest.createFunction(
       return { success: true, emailsSent: 0 };
     }
 
-    // Read PDF attachment once for all emails
-    const pdfBuffer = fs.readFileSync(
-      path.join(process.cwd(), "public", ATTACHMENT_PDF),
-    );
+    // Step 4.5: Fetch PDF attachment from Cloudflare R2
+    // Inngest serializes step return values through JSON, so we return a base64
+    // string and re-hydrate it into a Buffer outside the step.
+    const pdfBase64 = await step.run("fetch-pdf-attachment", async () => {
+      const res = await fetch(ATTACHMENT_PDF_URL);
+      if (!res.ok) {
+        throw new Error(
+          `Failed to fetch PDF from R2: ${res.status} ${res.statusText}`,
+        );
+      }
+      return Buffer.from(await res.arrayBuffer()).toString("base64");
+    });
+    const pdfBuffer = Buffer.from(pdfBase64, "base64");
 
     // Step 5: Send emails - distribute across accounts (round-robin or pre-assigned)
     // In new architecture, account is pre-assigned in campaign_leads.assigned_account_id
@@ -176,18 +187,30 @@ export default inngest.createFunction(
         companies: company, // Ensure nested structure if needed
       };
 
-      const account = accountMap.get(item.assigned_account_id);
+      const accountId = item.assigned_account_id;
 
-      if (!account) {
+      // Fetch fresh account data to ensure we have the latest refresh_token
+      // This avoids "invalid_grant" if the user reconnected the account while the campaign was running/paused
+      const { data: freshAccount, error: accountError } = await supabase
+        .from("accounts")
+        .select("id, email, provider, refresh_token, access_token")
+        .eq("id", accountId)
+        .single();
+
+      if (accountError || !freshAccount) {
         console.error(
-          `[Send Campaign] No account found for assigned_id ${item.assigned_account_id}`,
+          `[Send Campaign] No account found or error fetching for assigned_id ${accountId}`,
+          accountError,
         );
-        throw new NonRetriableError(
-          `Gmail account not found for assigned_account_id: ${item.assigned_account_id}`,
+        throw new Error(
+          `Account not found or inaccessible for assigned_account_id: ${accountId}`,
         );
       }
 
-      await step.run(`send-email-${item.id}`, async () => {
+      // Use freshAccount for credentials
+      const account = freshAccount;
+
+      const sent = await step.run(`send-email-${item.id}`, async () => {
         try {
           console.log(
             `[Send Campaign] Sending email to ${lead.email} via ${account.email} (${account.provider || "gmail"})`,
@@ -218,6 +241,8 @@ export default inngest.createFunction(
 
           if (account.provider === "outlook") {
             // Outlook Sending Logic
+            throw new Error("Outlook sending is temporarily disabled.");
+            /*
             const client = await createOutlookClient(account);
 
             const sendMail = {
@@ -237,7 +262,7 @@ export default inngest.createFunction(
                 attachments: [
                   {
                     "@odata.type": "#microsoft.graph.fileAttachment",
-                    name: ATTACHMENT_PDF,
+                    name: ATTACHMENT_PDF_NAME,
                     contentBytes: pdfBuffer.toString("base64"),
                   },
                 ],
@@ -250,10 +275,13 @@ export default inngest.createFunction(
             // We might need to make a separate call if we need it, or ignore it.
             // For now, we leave message_id null or approximate it.
             // Actually, we can assume success if no error.
+            */
           } else {
             // Gmail Sending Logic (Default)
             if (!account.refresh_token) {
-              console.error(`[Send Campaign] Account ${account.id} (${account.email}) is missing refresh token!`);
+              console.error(
+                `[Send Campaign] Account ${account.id} (${account.email}) is missing refresh token!`,
+              );
               throw new Error("Missing refresh token for Gmail account");
             }
 
@@ -261,8 +289,11 @@ export default inngest.createFunction(
             const oauth2Client = new google.auth.OAuth2(
               process.env.GOOGLE_CLIENT_ID,
               process.env.GOOGLE_CLIENT_SECRET,
+              `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/google/callback`,
             );
-            oauth2Client.setCredentials({ refresh_token: account.refresh_token });
+            oauth2Client.setCredentials({
+              refresh_token: account.refresh_token,
+            });
 
             const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
@@ -272,7 +303,7 @@ export default inngest.createFunction(
               subject,
               finalBody,
               pdfBuffer,
-              ATTACHMENT_PDF,
+              ATTACHMENT_PDF_NAME,
             );
 
             const encodedMessage = Buffer.from(message)
@@ -304,8 +335,31 @@ export default inngest.createFunction(
           console.log(
             `[Send Campaign] Email sent successfully to ${lead.email}`,
           );
-          successfulSends++;
+          return true;
         } catch (error: any) {
+          let errorMessage = error.message || "Unknown error";
+
+          // Handle Invalid Grant (Token Expired/Revoked)
+          if (
+            errorMessage.includes("invalid_grant") ||
+            error.response?.data?.error === "invalid_grant" ||
+            error.code === 400
+          ) {
+            // 400 can be other things, but if message is invalid_grant it's definite.
+            if (
+              errorMessage.includes("invalid_grant") ||
+              (error.response?.data?.error_description &&
+                error.response.data.error_description.includes("grant"))
+            ) {
+              errorMessage =
+                "Google Auth Error: Token expired or revoked. Please reconnect account.";
+              console.error(
+                `[Send Campaign] CRITICAL AUTH ERROR for ${account.email}:`,
+                errorMessage,
+              );
+            }
+          }
+
           console.error(
             `[Send Campaign] Failed to send email to ${lead.email}:`,
             error,
@@ -314,49 +368,52 @@ export default inngest.createFunction(
             .from("campaign_leads")
             .update({
               status: Campaigns.LeadStatus.FAILED,
-              error: error.message || "Unknown error",
+              error: errorMessage,
             })
             .eq("id", item.id);
+          return false;
         }
       });
 
+      if (sent) {
+        successfulSends++;
+      }
+
       // Add small delay between emails
-      await step.sleep("rate-limit-delay", "2s");
+      await step.sleep(`rate-limit-delay-${item.id}`, "2s");
     }
 
     // Step 6: Update campaign status based on results
     await step.run("update-final-status", async () => {
       if (successfulSends === 0) {
-        console.log(
-          `[Send Campaign] All emails failed for campaign ${campaignId}, marking as ERROR`,
-        );
         await supabase
           .from("campaigns")
           .update({
             status: Campaigns.Status.ERROR,
-            error: "All email sends failed"
+            error: "All email sends failed",
           })
           .eq("id", campaignId);
 
         return {
-          marked: 'Failed Campaign'
-        }
+          marked: "Failed Campaign",
+        };
       } else {
-        console.log(
-          `[Send Campaign] Marking campaign ${campaignId} as completed (${successfulSends}/${campaignLeads.length} sent)`,
-        );
         await supabase
           .from("campaigns")
           .update({ status: Campaigns.Status.COMPLETED })
           .eq("id", campaignId);
 
         return {
-          marked: 'Successful Campaign'
-        }
+          marked: "Successful Campaign",
+        };
       }
     });
 
     console.log(`[Send Campaign] Campaign execution finished: ${campaignId}`);
-    return { success: true, emailsSent: successfulSends, totalLeads: campaignLeads.length };
+    return {
+      success: true,
+      emailsSent: successfulSends,
+      totalLeads: campaignLeads.length,
+    };
   },
 );

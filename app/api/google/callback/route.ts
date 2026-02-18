@@ -38,15 +38,22 @@ export async function GET(request: Request) {
             return NextResponse.redirect(new URL('/login', request.url));
         }
 
-        // Upsert the account
-        const { error } = await supabase.from('accounts').upsert({
+        // Prepare account data
+        const accountData: any = {
             user_id: user.id,
             email: email,
-            refresh_token: tokens.refresh_token, // This handles the case where it might be null on subsequent logins if we didn't force consent, but we forced it.
             access_token: tokens.access_token,
             expires_at: tokens.expiry_date,
-            provider: 'google' // Changed from 'gmail' to 'google' to match other files (e.g. renew-watch)
-        }, {
+            provider: 'google'
+        };
+
+        // Only update refresh_token if we received a new one (e.g. first login or forced consent)
+        if (tokens.refresh_token) {
+            accountData.refresh_token = tokens.refresh_token;
+        }
+
+        // Upsert the account
+        const { error } = await supabase.from('accounts').upsert(accountData, {
             onConflict: 'user_id,email'
         });
 

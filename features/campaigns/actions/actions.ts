@@ -298,7 +298,10 @@ export async function getAccounts() {
 
   if (!user) return [];
 
-  const { data } = await supabase.from("accounts").select("*");
+  const { data } = await supabase
+    .from("accounts")
+    .select("*")
+    .eq("provider", "google");
 
   return data || [];
 }

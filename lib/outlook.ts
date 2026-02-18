@@ -97,13 +97,18 @@ export const refreshOutlookToken = async (
     }
 
     // Save new tokens to DB by Account ID
+    const updateData: any = {
+        access_token: data.access_token,
+        expires_at: Math.floor(Date.now() / 1000 + data.expires_in),
+    };
+
+    if (data.refresh_token) {
+        updateData.refresh_token = data.refresh_token;
+    }
+
     await supabaseAdmin
         .from("accounts")
-        .update({
-            access_token: data.access_token,
-            refresh_token: data.refresh_token, // Sometimes it rotates
-            expires_at: Math.floor(Date.now() / 1000 + data.expires_in),
-        })
+        .update(updateData)
         .eq("id", accountId)
         .eq("provider", "outlook");
 
@@ -119,20 +124,37 @@ export const createOutlookClient = async (account: any) => {
     const client = Client.init({
         authProvider: async (done) => {
             try {
-                let accessToken = account.access_token;
+                // Always fetch fresh account data from DB to avoid stale token issues (especially with Inngest retries)
+                const { data: freshAccount, error } = await supabaseAdmin
+                    .from("accounts")
+                    .select("access_token, refresh_token, expires_at")
+                    .eq("id", account.id)
+                    .single();
+
+                if (error || !freshAccount) {
+                    console.error("Failed to fetch fresh account data", error);
+                    // Fallback to provided account if DB fetch fails -> though this might still cause invalid_grant
+                    // But better to fail here than use stale data blindly loops
+                    // actually if we can't fetch, we probably can't save either.
+                    throw new Error("Failed to fetch fresh account for authentication");
+                }
+
+                let accessToken = freshAccount.access_token;
                 const now = Math.floor(Date.now() / 1000);
 
                 // Check if token is expired or about to expire (within 5 mins)
-                if (account.expires_at && now > account.expires_at - 300) {
+                if (freshAccount.expires_at && now > freshAccount.expires_at - 300) {
                     console.log("Refreshing Outlook token for account", account.id);
                     const newTokens = await refreshOutlookToken(
-                        account.refresh_token,
+                        freshAccount.refresh_token,
                         account.id,
                     );
                     accessToken = newTokens.access_token;
-                    // Update local account memory to prevent multiple refreshes in short loop if instance is reused (though usually recreated)
+
+                    // We don't strictly need to update 'account' param here as we fetch fresh next time,
+                    // but we can do it to keep local state fairly sync for current execution loop if any.
                     account.access_token = newTokens.access_token;
-                    account.refresh_token = newTokens.refresh_token || account.refresh_token;
+                    account.refresh_token = newTokens.refresh_token;
                     account.expires_at = Math.floor(Date.now() / 1000 + newTokens.expires_in);
                 }
 
