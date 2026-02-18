@@ -145,19 +145,15 @@ export default inngest.createFunction(
       return { success: true, emailsSent: 0 };
     }
 
-    // Step 4.5: Fetch PDF attachment from Cloudflare R2
-    // Inngest serializes step return values through JSON, so we return a base64
-    // string and re-hydrate it into a Buffer outside the step.
-    const pdfBase64 = await step.run("fetch-pdf-attachment", async () => {
-      const res = await fetch(ATTACHMENT_PDF_URL);
-      if (!res.ok) {
-        throw new Error(
-          `Failed to fetch PDF from R2: ${res.status} ${res.statusText}`,
-        );
-      }
-      return Buffer.from(await res.arrayBuffer()).toString("base64");
-    });
-    const pdfBuffer = Buffer.from(pdfBase64, "base64");
+    // Fetch PDF attachment directly from Cloudflare R2 (outside step to avoid
+    // Inngest serializing the binary as step output, which would exceed size limits).
+    const pdfRes = await fetch(ATTACHMENT_PDF_URL);
+    if (!pdfRes.ok) {
+      throw new Error(
+        `Failed to fetch PDF from R2: ${pdfRes.status} ${pdfRes.statusText}`,
+      );
+    }
+    const pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
 
     // Step 5: Send emails - distribute across accounts (round-robin or pre-assigned)
     // In new architecture, account is pre-assigned in campaign_leads.assigned_account_id
