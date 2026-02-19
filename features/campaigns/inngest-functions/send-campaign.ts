@@ -145,15 +145,10 @@ export default inngest.createFunction(
       return { success: true, emailsSent: 0 };
     }
 
-    // Fetch PDF attachment directly from Cloudflare R2 (outside step to avoid
-    // Inngest serializing the binary as step output, which would exceed size limits).
-    const pdfRes = await fetch(ATTACHMENT_PDF_URL);
-    if (!pdfRes.ok) {
-      throw new Error(
-        `Failed to fetch PDF from R2: ${pdfRes.status} ${pdfRes.statusText}`,
-      );
-    }
-    const pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
+    // NOTE: pdfBuffer is intentionally NOT fetched here.
+    // Fetching it outside steps and closing over a large Buffer inside step.run()
+    // causes Inngest to serialize the binary as part of step memoization state,
+    // triggering "output_too_large". Instead, we fetch the PDF fresh inside each step.
 
     // Step 5: Send emails - distribute across accounts (round-robin or pre-assigned)
     // In new architecture, account is pre-assigned in campaign_leads.assigned_account_id
@@ -235,87 +230,60 @@ export default inngest.createFunction(
           let threadId = null;
           let messageId = null;
 
-          if (account.provider === "outlook") {
-            // Outlook Sending Logic
-            throw new Error("Outlook sending is temporarily disabled.");
-            /*
-            const client = await createOutlookClient(account);
 
-            const sendMail = {
-              message: {
-                subject: subject,
-                body: {
-                  contentType: "HTML",
-                  content: finalBody,
-                },
-                toRecipients: [
-                  {
-                    emailAddress: {
-                      address: lead.email,
-                    },
-                  },
-                ],
-                attachments: [
-                  {
-                    "@odata.type": "#microsoft.graph.fileAttachment",
-                    name: ATTACHMENT_PDF_NAME,
-                    contentBytes: pdfBuffer.toString("base64"),
-                  },
-                ],
-              },
-              saveToSentItems: "true",
-            };
-
-            await client.api("/me/sendMail").post(sendMail);
-            // Graph API sendMail does not return the message ID directly usually. 
-            // We might need to make a separate call if we need it, or ignore it.
-            // For now, we leave message_id null or approximate it.
-            // Actually, we can assume success if no error.
-            */
-          } else {
-            // Gmail Sending Logic (Default)
-            if (!account.refresh_token) {
-              console.error(
-                `[Send Campaign] Account ${account.id} (${account.email}) is missing refresh token!`,
-              );
-              throw new Error("Missing refresh token for Gmail account");
-            }
-
-            // Create Gmail client manually as per previous working version
-            const oauth2Client = new google.auth.OAuth2(
-              process.env.GOOGLE_CLIENT_ID,
-              process.env.GOOGLE_CLIENT_SECRET,
-              `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/google/callback`,
+          // Gmail Sending Logic (Default)
+          if (!account.refresh_token) {
+            console.error(
+              `[Send Campaign] Account ${account.id} (${account.email}) is missing refresh token!`,
             );
-            oauth2Client.setCredentials({
-              refresh_token: account.refresh_token,
-            });
-
-            const gmail = google.gmail({ version: "v1", auth: oauth2Client });
-
-            const message = createEmailWithAttachment(
-              account.email,
-              lead.email,
-              subject,
-              finalBody,
-              pdfBuffer,
-              ATTACHMENT_PDF_NAME,
-            );
-
-            const encodedMessage = Buffer.from(message)
-              .toString("base64")
-              .replace(/\+/g, "-")
-              .replace(/\//g, "_")
-              .replace(/=+$/, "");
-
-            const res = await gmail.users.messages.send({
-              userId: "me",
-              requestBody: { raw: encodedMessage },
-            });
-
-            threadId = res.data.threadId;
-            messageId = res.data.id;
+            throw new Error("Missing refresh token for Gmail account");
           }
+
+          // Create Gmail client manually as per previous working version
+          const oauth2Client = new google.auth.OAuth2(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET,
+            `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/google/callback`,
+          );
+          oauth2Client.setCredentials({
+            refresh_token: account.refresh_token,
+          });
+
+          const gmail = google.gmail({ version: "v1", auth: oauth2Client });
+
+          // Fetch PDF fresh inside the step so Inngest never serializes the
+          // binary buffer as part of its memoized step state.
+          const pdfRes = await fetch(ATTACHMENT_PDF_URL);
+          if (!pdfRes.ok) {
+            throw new Error(
+              `Failed to fetch PDF from R2: ${pdfRes.status} ${pdfRes.statusText}`,
+            );
+          }
+          const pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
+
+          const message = createEmailWithAttachment(
+            account.email,
+            lead.email,
+            subject,
+            finalBody,
+            pdfBuffer,
+            ATTACHMENT_PDF_NAME,
+          );
+
+          const encodedMessage = Buffer.from(message)
+            .toString("base64")
+            .replace(/\+/g, "-")
+            .replace(/\//g, "_")
+            .replace(/=+$/, "");
+
+          const res = await gmail.users.messages.send({
+            userId: "me",
+            requestBody: { raw: encodedMessage },
+          });
+
+          threadId = res.data.threadId;
+          messageId = res.data.id;
+
 
           // Update campaign_leads status
           await supabase
@@ -335,31 +303,7 @@ export default inngest.createFunction(
         } catch (error: any) {
           let errorMessage = error.message || "Unknown error";
 
-          // Handle Invalid Grant (Token Expired/Revoked)
-          if (
-            errorMessage.includes("invalid_grant") ||
-            error.response?.data?.error === "invalid_grant" ||
-            error.code === 400
-          ) {
-            // 400 can be other things, but if message is invalid_grant it's definite.
-            if (
-              errorMessage.includes("invalid_grant") ||
-              (error.response?.data?.error_description &&
-                error.response.data.error_description.includes("grant"))
-            ) {
-              errorMessage =
-                "Google Auth Error: Token expired or revoked. Please reconnect account.";
-              console.error(
-                `[Send Campaign] CRITICAL AUTH ERROR for ${account.email}:`,
-                errorMessage,
-              );
-            }
-          }
 
-          console.error(
-            `[Send Campaign] Failed to send email to ${lead.email}:`,
-            error,
-          );
           await supabase
             .from("campaign_leads")
             .update({
