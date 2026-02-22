@@ -12,12 +12,14 @@
     "node": "20"
   },
   "dependencies": {
-    "@ai-sdk/google": "^3.0.20",
+    "@ai-sdk/google": "^3.0.30",
     "@ai-sdk/google-vertex": "^4.0.41",
+    "@ai-sdk/openai": "^3.0.30",
     "@base-ui/react": "^1.1.0",
     "@hookform/resolvers": "^5.2.2",
     "@hugeicons/core-free-icons": "^3.1.1",
     "@hugeicons/react": "^1.1.4",
+    "@mendable/firecrawl-js": "^4.13.0",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.93.3",
@@ -32,6 +34,7 @@
     "ai": "^6.0.67",
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
+    "docx": "^9.5.3",
     "embla-carousel-react": "^8.6.0",
     "googleapis": "^171.0.0",
     "hugeicons-react": "^0.4.0",

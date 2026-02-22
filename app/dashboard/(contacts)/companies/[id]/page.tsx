@@ -16,7 +16,7 @@ import { useState, useEffect } from 'react'
 import { toast } from "sonner"
 import { cn } from '@/lib/utils'
 import { Editor } from '@/components/editor'
-import { getDefaultTemplate } from '@/features/content/actions/content-actions'
+import { getDefaultTemplate } from '@/features/prompts/actions/content-actions'
 
 type ViewSection = 'template' | 'leads' | 'insights'
 
