@@ -1,5 +1,5 @@
 import { generateObject } from "ai";
-import { vertex } from "@/lib/vertex-ai/vertex-ai";
+import { aiModel } from "@/lib/ai/models";
 import { z } from "zod";
 
 export type CompanyData = {
@@ -20,7 +20,9 @@ export type GenerateEmailResult = z.infer<typeof EmailOutputSchema>;
  */
 export async function generateCompanyEmailTemplate(
     company: CompanyData,
-    researchContext: string
+    researchContext: string,
+    systemPrompt: string,
+    userPrompt: string
 ): Promise<GenerateEmailResult> {
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log("🚀 Starting Company Email Generation (Structured)");
@@ -28,16 +30,14 @@ export async function generateCompanyEmailTemplate(
     console.log(`Company: ${company.name}`);
 
     try {
-        // Fetch default template which contains the prompts
-        const { getDefaultTemplate } = await import("@/features/prompts/actions/content-actions");
-        const template = await getDefaultTemplate();
+        console.log("🤖 Calling Gemini 3 Flash Preview via generateObject...");
 
-        const systemPrompt = template.company_system_prompt || "You are an expert SDR writing a cold email.";
-        const userPromptTemplate = template.company_user_prompt || "Write an email for {{company}} ({{domain}}).";
+        // We enforce the JSON object structure 
+        const strictSystemPrompt = systemPrompt + "\n\nCRITICAL: You must return strictly valid JSON matching the specified schema. Output pure HTML in the body property including <p> and <br> elements for spacing. Do not include markdown wraps.";
 
         // Add research context to the prompt
         const enhancedUserPrompt = `
-${userPromptTemplate.replace("{{company}}", company.name).replace("{{domain}}", company.domain)}
+${userPrompt}
 
 --- FIRECRAWL RESEARCH CONTEXT ---
 Use the following research to personalize the email effectively:
@@ -45,13 +45,8 @@ ${researchContext}
 --- END RESEARCH CONTEXT ---
     `.trim();
 
-        console.log("🤖 Calling Gemini 3 Flash Preview via generateObject...");
-
-        // We enforce the JSON object structure 
-        const strictSystemPrompt = systemPrompt + "\n\nCRITICAL: You must return strictly valid JSON matching the specified schema. Output pure HTML in the body property including <p> and <br> elements for spacing. Do not include markdown wraps.";
-
         const { object: result } = await generateObject({
-            model: vertex("gemini-3-flash-preview"),
+            model: aiModel("gemini-3-flash-preview"),
             schema: EmailOutputSchema,
             system: strictSystemPrompt,
             prompt: enhancedUserPrompt,

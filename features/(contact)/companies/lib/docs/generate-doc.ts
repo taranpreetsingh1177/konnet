@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { vertex } from "@/lib/vertex-ai/vertex-ai";
+import { aiModel } from "@/lib/ai/models";
 import { DocumentNodeSchema, type DocumentAST } from "./docTypes";
 import { buildDocx } from "./buildDocx";
 
@@ -23,12 +23,16 @@ CRITICAL: You must return strictly valid JSON. Do not include markdown formattin
 export async function generateDocumentASTBuffer(
     companyName: string,
     domain: string,
-    researchContext: string
+    researchContext: string,
+    systemPrompt: string,
+    userPrompt: string
 ): Promise<{ ast: DocumentAST; buffer: Buffer }> {
     console.log(`[Generate Doc] Starting AST Document generation for ${companyName}`);
 
-    const userPrompt = `
-Generate a strategy proposal for ${companyName} (${domain}). Firm preparing the proposal: Alvion AI Strategy.
+    const finalSystemPrompt = systemPrompt + "\n\nCRITICAL: You must return strictly valid JSON. Do not include markdown formatting or extra text outside the JSON object. The root of the JSON must be an object with a 'nodes' array.";
+
+    const finalUserPrompt = `
+${userPrompt}
 
 --- FIRECRAWL RESEARCH CONTEXT ---
 Use the following research to personalize the proposal specifically for this company:
@@ -37,9 +41,9 @@ ${researchContext}
   `.trim();
 
     const { text } = await generateText({
-        model: vertex("gemini-3-flash-preview"),
-        system: SYSTEM_PROMPT,
-        prompt: userPrompt,
+        model: aiModel("gemini-3-flash-preview"),
+        system: finalSystemPrompt,
+        prompt: finalUserPrompt,
     });
 
     const jsonStr = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();

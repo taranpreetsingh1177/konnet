@@ -1,11 +1,11 @@
 import { generateText, Output } from "ai";
-import { vertex } from "@/lib/vertex-ai/vertex-ai";
+import { aiModel } from "@/lib/ai/models";
 import { z } from "zod";
 
 export type ValidationProps =
-    | { type: "email"; content: string; subject: string }
-    | { type: "document"; content: string }
-    | { type: "linkedin"; content: string };
+    | { type: "email"; content: string; subject: string; customPrompt?: string }
+    | { type: "document"; content: string; customPrompt?: string }
+    | { type: "linkedin"; content: string; customPrompt?: string };
 
 const ValidationSchema = z.object({
     isValid: z.boolean().describe("True if the content is safe and valid according to instructions, false otherwise"),
@@ -33,6 +33,7 @@ Check for these CRITICAL FAILURES:
 - Large blocks of Lorem Ipsum.
 - Unreplaced "prompt-like" placeholders (e.g., "[Insert Company Name Here]").
 
+${props.customPrompt ? `USER DEFINED CONSTRAINTS:\n${props.customPrompt}\n` : ""}
 EMAIL SUBJECT: "${props.subject || ''}"
 EMAIL BODY (HTML):
 ${props.content}`;
@@ -47,6 +48,7 @@ Check for these CRITICAL FAILURES:
 - Broken logic, empty repetitive sections, or giant blocks of Lorem Ipsum.
 - Placeholders like [Insert Here] that the generator failed to replace.
 
+${props.customPrompt ? `USER DEFINED CONSTRAINTS:\n${props.customPrompt}\n` : ""}
 DOCUMENT AST:
 ${props.content}`;
 
@@ -64,6 +66,7 @@ Check for these CRITICAL FAILURES:
 - Message contains unreplaced placeholders like [Insert Context Here] or {{name}}.
 - Message is offensive or completely nonsensical.
 
+${props.customPrompt ? `USER DEFINED CONSTRAINTS:\n${props.customPrompt}\n` : ""}
 LINKEDIN MESSAGE:
 "${props.content}"`;
 
@@ -72,7 +75,7 @@ LINKEDIN MESSAGE:
         }
 
         const { output: result } = await generateText({
-            model: vertex("gemini-2.5-flash-lite"),
+            model: aiModel("gemini-2.5-flash-lite"),
             output: Output.object({
                 schema: ValidationSchema,
             }),

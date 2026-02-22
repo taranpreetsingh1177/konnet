@@ -42,7 +42,7 @@ const navItems: NavGroup[] = [
     group: "",
     items: [
       {
-        name: "Dashboard",
+        name: "Home",
         href: "/dashboard/home",
         icon: HomeIcon,
       },

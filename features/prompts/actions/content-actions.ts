@@ -23,6 +23,7 @@ export type PromptRecord = {
     type: PromptType;
     system_prompt: string | null;
     user_prompt: string | null;
+    validation_prompt: string | null;
     created_at: string;
     updated_at: string;
 };
@@ -51,7 +52,7 @@ export async function getPrompt(type: PromptType): Promise<PromptRecord | null> 
     return existing as PromptRecord | null;
 }
 
-export async function savePrompt(type: PromptType, systemPrompt: string, userPrompt: string) {
+export async function savePrompt(type: PromptType, systemPrompt: string, userPrompt: string, validationPrompt: string = "") {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -67,6 +68,7 @@ export async function savePrompt(type: PromptType, systemPrompt: string, userPro
                 type,
                 system_prompt: systemPrompt,
                 user_prompt: userPrompt,
+                validation_prompt: validationPrompt,
                 updated_at: new Date().toISOString()
             },
             { onConflict: 'user_id,type' }

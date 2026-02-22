@@ -36,6 +36,47 @@ export default inngest.createFunction(
       return await fetchCompanyData(companyId);
     });
 
+    // Step 0.3: Fetch Custom User Prompts explicitly bypassing RLS
+    const userPrompts = await step.run("fetch-prompts", async () => {
+      console.log(`[Enrich Company] Fetching custom prompts for user_id: ${company.user_id}`);
+
+      const { data: prompts, error } = await supabase
+        .from("prompts")
+        .select("*")
+        .eq("user_id", company.user_id)
+        .in("type", ["mail", "linkedin", "doc"]);
+
+      if (error) {
+        throw new Error(`Failed to fetch prompts from database: ${error.message}`);
+      }
+
+      const mailPrompt = prompts?.find(p => p.type === 'mail');
+      const linkedinPrompt = prompts?.find(p => p.type === 'linkedin');
+      const docPrompt = prompts?.find(p => p.type === 'doc');
+
+      if (!mailPrompt || !linkedinPrompt || !docPrompt) {
+        throw new Error(`CRITICAL: User ${company.user_id} is lacking 1 or more custom prompts. All 3 types (mail, linkedin, doc) MUST exist in the database to run enrichment.`);
+      }
+
+      return {
+        mail: {
+          system: mailPrompt.system_prompt,
+          user: mailPrompt.user_prompt,
+          validation: mailPrompt.validation_prompt
+        },
+        linkedin: {
+          system: linkedinPrompt.system_prompt,
+          user: linkedinPrompt.user_prompt,
+          validation: linkedinPrompt.validation_prompt
+        },
+        doc: {
+          system: docPrompt.system_prompt,
+          user: docPrompt.user_prompt,
+          validation: docPrompt.validation_prompt
+        }
+      };
+    });
+
     // Step 0.5: Update status to processing
     await step.run("update-status-processing", async () => {
       console.log(`[Enrich Company] Updating status to processing: ${companyId}`);
@@ -62,13 +103,26 @@ export default inngest.createFunction(
     const emailData = await step.run("generate-mail", async () => {
       const { generateCompanyEmailTemplate } = await import("../lib/mail/generate-mail");
       const { validateContent } = await import("../lib/validation/validate");
+      const { injectVariables } = await import("@/lib/prompts/variable-injector");
+
+      const promptContext = {
+        companyName: company.name,
+        domain: company.domain,
+        researchContext: researchContext
+      };
+
+      const finalSystemPrompt = injectVariables(userPrompts.mail.system || "", promptContext);
+      const finalUserPrompt = injectVariables(userPrompts.mail.user || "", promptContext);
+      const finalValidationPrompt = injectVariables(userPrompts.mail.validation || "", promptContext);
 
       const mail = await generateCompanyEmailTemplate(
         { name: company.name, domain: company.domain },
-        researchContext
+        researchContext,
+        finalSystemPrompt,
+        finalUserPrompt
       );
 
-      const validation = await validateContent({ type: "email", content: mail.body, subject: mail.subject });
+      const validation = await validateContent({ type: "email", content: mail.body, subject: mail.subject, customPrompt: finalValidationPrompt });
       if (!validation.isValid) {
         throw new Error(`Email validation failed: ${validation.reason}`);
       }
@@ -81,14 +135,27 @@ export default inngest.createFunction(
       const { generateDocumentASTBuffer } = await import("../lib/docs/generate-doc");
       const { validateContent } = await import("../lib/validation/validate");
       const { uploadDocumentToSupabase } = await import("../lib/docs/upload-doc");
+      const { injectVariables } = await import("@/lib/prompts/variable-injector");
+
+      const promptContext = {
+        companyName: company.name,
+        domain: company.domain,
+        researchContext: researchContext
+      };
+
+      const finalSystemPrompt = injectVariables(userPrompts.doc.system || "", promptContext);
+      const finalUserPrompt = injectVariables(userPrompts.doc.user || "", promptContext);
+      const finalValidationPrompt = injectVariables(userPrompts.doc.validation || "", promptContext);
 
       const { ast, buffer } = await generateDocumentASTBuffer(
         company.name,
         company.domain,
-        researchContext
+        researchContext,
+        finalSystemPrompt,
+        finalUserPrompt
       );
 
-      const validation = await validateContent({ type: "document", content: JSON.stringify(ast, null, 2) });
+      const validation = await validateContent({ type: "document", content: JSON.stringify(ast, null, 2), customPrompt: finalValidationPrompt });
       if (!validation.isValid) {
         throw new Error(`Document validation failed: ${validation.reason}`);
       }
@@ -101,14 +168,27 @@ export default inngest.createFunction(
     const linkedinMessage = await step.run("generate-linkedin", async () => {
       const { generateLinkedinMessage } = await import("../lib/linkedin/generate-linkedin");
       const { validateContent } = await import("../lib/validation/validate");
+      const { injectVariables } = await import("@/lib/prompts/variable-injector");
+
+      const promptContext = {
+        companyName: company.name,
+        domain: company.domain,
+        researchContext: researchContext
+      };
+
+      const finalSystemPrompt = injectVariables(userPrompts.linkedin.system || "", promptContext);
+      const finalUserPrompt = injectVariables(userPrompts.linkedin.user || "", promptContext);
+      const finalValidationPrompt = injectVariables(userPrompts.linkedin.validation || "", promptContext);
 
       const msg = await generateLinkedinMessage(
         company.name,
         company.domain,
-        researchContext
+        researchContext,
+        finalSystemPrompt,
+        finalUserPrompt
       );
 
-      const validation = await validateContent({ type: "linkedin", content: msg });
+      const validation = await validateContent({ type: "linkedin", content: msg, customPrompt: finalValidationPrompt });
       if (!validation.isValid) {
         throw new Error(`LinkedIn validation failed: ${validation.reason}`);
       }

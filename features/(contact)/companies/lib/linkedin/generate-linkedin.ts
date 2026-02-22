@@ -1,5 +1,5 @@
 import { generateObject } from "ai";
-import { vertex } from "@/lib/vertex-ai/vertex-ai";
+import { aiModel } from "@/lib/ai/models";
 import { z } from "zod";
 
 export const LinkedInOutputSchema = z.object({
@@ -9,23 +9,19 @@ export const LinkedInOutputSchema = z.object({
 export async function generateLinkedinMessage(
     companyName: string,
     domain: string,
-    researchContext: string
+    researchContext: string,
+    systemPrompt: string,
+    userPrompt: string
 ): Promise<string> {
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log("🚀 Starting LinkedIn Message Generation");
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
     try {
-        const { getDefaultTemplate } = await import("@/features/prompts/actions/content-actions");
-        const template = await getDefaultTemplate();
-
-        const systemPrompt = "You are an expert sales professional writing highly converting LinkedIn connection messages. Keep it brief, contextual, and do NOT use placeholders. Maximum 300 characters.";
-
-        // Fallback message if no linkedin template exists yet, though it should be set
-        const userPromptTemplate = "Write a short LinkedIn connection request focusing on how Alvion AI Strategy can help {{company}}'s specific initiatives.";
+        const finalSystemPrompt = systemPrompt || "You are an expert sales professional writing highly converting LinkedIn connection messages. Keep it brief, contextual, and do NOT use placeholders. Maximum 300 characters.";
 
         const enhancedUserPrompt = `
-${userPromptTemplate.replace("{{company}}", companyName).replace("{{domain}}", domain)}
+${userPrompt}
 
 --- FIRECRAWL RESEARCH CONTEXT ---
 Use the following research to make the message highly relevant to them:
@@ -36,9 +32,9 @@ ${researchContext}
         console.log("🤖 Calling Gemini 3 Flash Preview via generateObject for LinkedIn...");
 
         const { object: result } = await generateObject({
-            model: vertex("gemini-3-flash-preview"),
+            model: aiModel("gemini-3-flash-preview"),
             schema: LinkedInOutputSchema,
-            system: systemPrompt,
+            system: finalSystemPrompt,
             prompt: enhancedUserPrompt,
         });
 

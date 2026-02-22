@@ -12,8 +12,9 @@
     "node": "20"
   },
   "dependencies": {
-    "@ai-sdk/google": "^3.0.20",
+    "@ai-sdk/google": "^3.0.30",
     "@ai-sdk/google-vertex": "^4.0.41",
+    "@ai-sdk/openai": "^3.0.30",
     "@base-ui/react": "^1.1.0",
     "@hookform/resolvers": "^5.2.2",
     "@hugeicons/core-free-icons": "^3.1.1",
