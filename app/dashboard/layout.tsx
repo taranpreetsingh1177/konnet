@@ -3,13 +3,6 @@ import { redirect } from "next/navigation"
 import { Sidebar } from "@/components/sidebar"
 import { SidebarInset } from "@/components/ui/sidebar"
 
-async function handleLogout() {
-    'use server'
-    const supabase = await createClient()
-    await supabase.auth.signOut()
-    redirect('/login')
-}
-
 export default async function DashboardLayout({
     children,
 }: {
@@ -24,7 +17,7 @@ export default async function DashboardLayout({
 
     return (
         <div className="flex min-h-screen w-full">
-            <Sidebar onLogout={handleLogout} />
+            <Sidebar />
             <SidebarInset>
                 {children}
             </SidebarInset>

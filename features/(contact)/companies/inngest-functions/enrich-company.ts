@@ -1,8 +1,6 @@
 import { inngest } from "@/lib/inngest/client";
 import { createClient } from "@supabase/supabase-js";
 import { NonRetriableError } from "inngest";
-import { generateCompanyEmailTemplate } from "../lib/generate-email";
-import { validateEmailContent } from "../lib/validate-email";
 import { Companies } from "../lib/constants";
 
 // Create admin Supabase client for background jobs
@@ -32,30 +30,15 @@ export default inngest.createFunction(
   async ({ event, step }) => {
     const { companyId } = event.data;
 
-    // Step 1: Fetch company details
+    // Step 0: Fetch company details
     const company = await step.run("fetch-company", async () => {
-      console.log(`[Enrich Company] Fetching company details: ${companyId}`);
-      const { data, error } = await supabase
-        .from("companies")
-        .select("*")
-        .eq("id", companyId)
-        .single();
-
-      if (error || !data) {
-        console.error(
-          `[Enrich Company] Company not found: ${companyId}`,
-          error,
-        );
-        throw new NonRetriableError(`Company not found: ${companyId}`);
-      }
-      return data;
+      const { fetchCompanyData } = await import("../lib/database/fetch-company");
+      return await fetchCompanyData(companyId);
     });
 
-    // Step 2: Update status to processing
+    // Step 0.5: Update status to processing
     await step.run("update-status-processing", async () => {
-      console.log(
-        `[Enrich Company] Updating status to processing: ${companyId}`,
-      );
+      console.log(`[Enrich Company] Updating status to processing: ${companyId}`);
       await supabase
         .from("companies")
         .update({
@@ -66,56 +49,89 @@ export default inngest.createFunction(
         .eq("id", companyId);
     });
 
-    // Step 3: Generate email template with Google Search grounding (combines research + generation)
-    const emailData = await step.run("generate-email-template", async () => {
-      console.log(
-        `[Enrich Company] Generating email template for: ${company.name}`,
+    // Step 1: Research via Firecrawl
+    const researchContext = await step.run("research-company", async () => {
+      const { performCompanyResearch } = await import("../lib/web-research/research");
+      return await performCompanyResearch({
+        companyName: company.name,
+        domain: company.domain,
+      });
+    });
+
+    // Step 2 & 3: Mail Generation and Validation
+    const emailData = await step.run("generate-mail", async () => {
+      const { generateCompanyEmailTemplate } = await import("../lib/mail/generate-mail");
+      const { validateContent } = await import("../lib/validation/validate");
+
+      const mail = await generateCompanyEmailTemplate(
+        { name: company.name, domain: company.domain },
+        researchContext
       );
-      try {
-        const result = await generateCompanyEmailTemplate({
-          name: company.name,
-          domain: company.domain,
-        });
 
-        // 🛡️ AI Quality Check
-        console.log(
-          `[Enrich Company] Validating generated email for: ${company.name}`,
-        );
-        const validation = await validateEmailContent(result.subject, result.body);
-
-        if (!validation.isValid) {
-            console.warn(`[Enrich Company] Validation failed: ${validation.reason}`);
-            throw new Error(`AI Validation Failed: ${validation.reason}`);
-        }
-
-        return result;
-      } catch (error) {
-        console.error(
-          "[Enrich Company] Error generating email template:",
-          error,
-        );
-        throw error;
+      const validation = await validateContent({ type: "email", content: mail.body, subject: mail.subject });
+      if (!validation.isValid) {
+        throw new Error(`Email validation failed: ${validation.reason}`);
       }
+
+      return mail;
     });
 
-    // Step 4: Update company with enriched data
-    await step.run("update-company-data", async () => {
-      console.log(
-        `[Enrich Company] Updating company with enriched data: ${companyId}`,
+    // Step 4 & 5 & Upload: Doc AST Generation, Validation, and Storage Upload
+    const docUrl = await step.run("generate-document", async () => {
+      const { generateDocumentASTBuffer } = await import("../lib/docs/generate-doc");
+      const { validateContent } = await import("../lib/validation/validate");
+      const { uploadDocumentToSupabase } = await import("../lib/docs/upload-doc");
+
+      const { ast, buffer } = await generateDocumentASTBuffer(
+        company.name,
+        company.domain,
+        researchContext
       );
-      await supabase
-        .from("companies")
-        .update({
-          email_subject: emailData.subject,
-          email_template: emailData.body,
-          enrichment_status: Companies.EnrichmentStatus.COMPLETED,
-        })
-        .eq("id", companyId);
+
+      const validation = await validateContent({ type: "document", content: JSON.stringify(ast, null, 2) });
+      if (!validation.isValid) {
+        throw new Error(`Document validation failed: ${validation.reason}`);
+      }
+
+      // Convert the doc buffer and push it to Supabase Storage
+      return await uploadDocumentToSupabase(companyId, buffer, company.name);
     });
 
-    console.log(
-      `[Enrich Company] Completed enrichment for company: ${companyId}`,
-    );
+    // Step 6 & 7: LinkedIn Message Generation and Validation
+    const linkedinMessage = await step.run("generate-linkedin", async () => {
+      const { generateLinkedinMessage } = await import("../lib/linkedin/generate-linkedin");
+      const { validateContent } = await import("../lib/validation/validate");
+
+      const msg = await generateLinkedinMessage(
+        company.name,
+        company.domain,
+        researchContext
+      );
+
+      const validation = await validateContent({ type: "linkedin", content: msg });
+      if (!validation.isValid) {
+        throw new Error(`LinkedIn validation failed: ${validation.reason}`);
+      }
+
+      return msg;
+    });
+
+    // Step 8: Update Database with newly generated columns and increment metadata.version
+    await step.run("update-company-data", async () => {
+      const { updateCompanyRecord } = await import("../lib/database/update-company");
+
+      await updateCompanyRecord({
+        companyId,
+        emailSubject: emailData.subject,
+        emailBody: emailData.body,
+        docUrl: docUrl,
+        linkedinMessage: linkedinMessage,
+        existingMetadata: company.metadata,
+      });
+    });
+
+    console.log(`[Enrich Company] Completed 8-step enrichment for company: ${companyId}`);
     return { success: true, companyId };
   },
 );
+
