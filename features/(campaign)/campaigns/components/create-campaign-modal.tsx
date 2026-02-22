@@ -76,35 +76,15 @@ export function CreateCampaignModal({
 
   // Form state
   const [name, setName] = useState("");
-  const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
-  const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
-  const [targetType, setTargetType] = useState<"company" | "tag">("company");
+  const [selectedAccounts, setSelectedAccounts] = useState<string[]>(accounts.map(a => a.id));
   const [selectedTag, setSelectedTag] = useState<string>("");
   const [scheduledAt, setScheduledAt] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
 
   const toggleAccount = (id: string) => {
     setSelectedAccounts((prev) =>
       prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id],
     );
   };
-
-  const toggleCompany = (id: string) => {
-    setSelectedCompanies((prev) =>
-      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id],
-    );
-  };
-
-  const selectAllCompanies = () => {
-    const filteredCompanies = companies.filter((c) =>
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()),
-    );
-    setSelectedCompanies(filteredCompanies.map((c) => c.id));
-  };
-
-  const filteredCompanies = companies.filter((c) =>
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
 
   const handleCreate = async () => {
     setLoading(true);
@@ -113,8 +93,8 @@ export function CreateCampaignModal({
     const input: CreateCampaignInput = {
       name,
       account_ids: selectedAccounts,
-      company_ids: targetType === "company" ? selectedCompanies : [],
-      tag: targetType === "tag" ? selectedTag : undefined,
+      company_ids: [],
+      tag: selectedTag || undefined,
       scheduled_at: scheduledAt
         ? new Date(scheduledAt).toISOString()
         : undefined,
@@ -142,20 +122,16 @@ export function CreateCampaignModal({
   const resetForm = () => {
     setStep(1);
     setName("");
-    setSelectedAccounts([]);
-    setSelectedCompanies([]);
-    setTargetType("company");
+    setSelectedAccounts(accounts.map((a) => a.id));
     setSelectedTag("");
     setScheduledAt("");
     setError(null);
-    setSearchQuery("");
   };
 
   // ... (some code skipped for brevity if identical)
 
   const canProceedStep1 = name.trim() && selectedAccounts.length > 0;
-  const canProceedStep2 =
-    targetType === "company" ? selectedCompanies.length > 0 : !!selectedTag;
+  const canProceedStep2 = !!selectedTag;
 
   return (
     <Dialog open={open} onOpenChange={() => setOpen(!open)}>
@@ -237,140 +213,39 @@ export function CreateCampaignModal({
             <DialogHeader>
               <DialogTitle>Select Targets</DialogTitle>
               <DialogDescription>
-                Step 2: Choose which companies to target (
-                {selectedCompanies.length} selected)
+                Step 2: Choose which tag to target.
               </DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-3">
-              <Tabs
-                defaultValue="company"
-                onValueChange={(v) => setTargetType(v as "company" | "tag")}
-                className="w-full flex flex-col"
-              >
-                <TabsList className="grid w-full grid-cols-2 mb-4 h-auto">
-                  <TabsTrigger value="company">By Company</TabsTrigger>
-                  <TabsTrigger value="tag">By Custom Tag</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="company" className="space-y-3">
-                  <Input
-                    placeholder="Search companies..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={selectAllCompanies}
-                    >
-                      Select All ({filteredCompanies.length})
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSelectedCompanies([])}
-                    >
-                      Clear Selection
-                    </Button>
-                  </div>
-                  <div className="border rounded-lg p-3 max-h-60 overflow-y-auto space-y-1">
-                    {filteredCompanies.length === 0 ? (
-                      <p className="text-sm text-gray-500 text-center py-4">
-                        {companies.length === 0
-                          ? "No companies found. Upload leads with company info first."
-                          : "No companies match your search."}
-                      </p>
-                    ) : (
-                      filteredCompanies.map((company) => (
-                        <div
-                          key={company.id}
-                          className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded cursor-pointer"
-                          onClick={() => toggleCompany(company.id)}
-                        >
-                          <Checkbox
-                            id={`company-${company.id}`}
-                            checked={selectedCompanies.includes(company.id)}
-                            onCheckedChange={() => toggleCompany(company.id)}
-                          />
-                          <div className="flex items-center gap-3 flex-1">
-                            {company.logo_url ? (
-                              <img
-                                src={company.logo_url}
-                                alt={company.name}
-                                className="w-8 h-8 object-contain rounded bg-white border border-gray-100 p-0.5"
-                              />
-                            ) : (
-                              <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-600 uppercase">
-                                {company.name.charAt(0)}
-                              </div>
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate text-gray-900">
-                                {company.name}
-                              </p>
-                              <div className="flex items-center gap-2 text-xs text-gray-500">
-                                <Badge
-                                  variant="secondary"
-                                  className="text-[10px] font-normal h-5 px-1.5 bg-gray-100 text-gray-600 hover:bg-gray-200"
-                                >
-                                  Total: {company.leadCount}
-                                </Badge>
-                                {company.availableLeadCount > 0 ? (
-                                  <Badge
-                                    variant="secondary"
-                                    className="text-[10px] font-normal h-5 px-1.5 bg-green-50 text-green-700 hover:bg-green-100 border-green-100"
-                                  >
-                                    Available: {company.availableLeadCount}
-                                  </Badge>
-                                ) : (
-                                  <Badge
-                                    variant="outline"
-                                    className="text-[10px] font-normal h-5 px-1.5 text-gray-400 border-dashed"
-                                  >
-                                    None Available
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Select Tag</Label>
+                  <Select value={selectedTag} onValueChange={(val) => setSelectedTag(val || "")}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a tag..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tags.length === 0 ? (
+                        <div className="p-2 text-sm text-gray-500 text-center">
+                          No tags found. Add tags when importing leads.
                         </div>
-                      ))
-                    )}
+                      ) : (
+                        tags.map((tag) => (
+                          <SelectItem key={tag} value={tag}>
+                            {tag}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {selectedTag && (
+                  <div className="bg-blue-50 text-blue-800 p-3 rounded-md text-sm flex items-center gap-2">
+                    <Sparkles className="w-4 h-4" />
+                    Campaign will include all leads with tag "{selectedTag}".
                   </div>
-                </TabsContent>
-
-                <TabsContent value="tag" className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label>Select Tag</Label>
-                    <Select value={selectedTag} onValueChange={(val) => setSelectedTag(val || "")}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a tag..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {tags.length === 0 ? (
-                          <div className="p-2 text-sm text-gray-500 text-center">
-                            No tags found. Add tags when importing leads.
-                          </div>
-                        ) : (
-                          tags.map((tag) => (
-                            <SelectItem key={tag} value={tag}>
-                              {tag}
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {selectedTag && (
-                    <div className="bg-blue-50 text-blue-800 p-3 rounded-md text-sm flex items-center gap-2">
-                      <Sparkles className="w-4 h-4" />
-                      Campaign will include all leads with tag "{selectedTag}".
-                    </div>
-                  )}
-                </TabsContent>
-              </Tabs>
+                )}
+              </div>
             </div>
             <DialogFooter className="gap-2">
               <Button variant="outline" onClick={() => setStep(1)}>
@@ -414,35 +289,13 @@ export function CreateCampaignModal({
                   </div>
                   <div>
                     <Label className="text-xs text-gray-500">
-                      Target Companies
+                      Target Tag
                     </Label>
                     <p className="font-medium">
-                      {selectedCompanies.length} compan
-                      {selectedCompanies.length !== 1 ? "ies" : "y"}
+                      {selectedTag}
                     </p>
                   </div>
                 </div>
-
-                <div>
-                  <Label className="text-xs text-gray-500">Target Type</Label>
-                  <p className="font-medium capitalize">
-                    {targetType === "company" ? "By Company" : `Tag: ${selectedTag}`}
-                  </p>
-                </div>
-
-                <div>
-                  <Label className="text-xs text-gray-500">Total Leads</Label>
-                  <p className="font-medium">
-                    {targetType === "company"
-                      ? selectedCompanies.reduce((sum, id) => {
-                        const company = companies.find((c) => c.id === id);
-                        return sum + (company?.leadCount || 0);
-                      }, 0)
-                      : "Calculating..."}{" "}
-                    leads will receive personalized emails
-                  </p>
-                </div>
-
               </div>
 
               {/* Template Info */}
