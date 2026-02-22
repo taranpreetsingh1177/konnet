@@ -10,14 +10,12 @@ export async function uploadDocumentToSupabase(
     buffer: Buffer,
     companyName: string
 ): Promise<string> {
-    console.log(`[Upload Doc] Uploading document for ${companyName}...`);
 
-    // Clean filename
     const cleanName = companyName.replace(/[^a-z0-9]/gi, "_").toLowerCase();
     const filePath = `${companyId}/${cleanName}-proposal.docx`;
 
-    const { data, error } = await supabase.storage
-        .from("documents") // MUST exist in Supabase storage buckets
+    const { error } = await supabase.storage
+        .from("documents")
         .upload(filePath, buffer, {
             contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             upsert: true,
@@ -27,12 +25,9 @@ export async function uploadDocumentToSupabase(
         throw new Error(`Failed to upload document to Supabase storage: ${error.message}`);
     }
 
-    // Get the public URL for the uploaded document
     const { data: publicUrlData } = supabase.storage
         .from("documents")
         .getPublicUrl(filePath);
-
-    console.log(`[Upload Doc] Successfully uploaded. URL: ${publicUrlData.publicUrl}`);
 
     return publicUrlData.publicUrl;
 }

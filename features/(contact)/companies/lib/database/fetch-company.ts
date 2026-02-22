@@ -6,7 +6,6 @@ const supabase = createClient(
 );
 
 export async function fetchCompanyData(companyId: string) {
-    console.log(`[Fetch Company] Retrieving data for ID: ${companyId}`);
     const { data: company, error } = await supabase
         .from("companies")
         .select("*")

@@ -11,21 +11,14 @@ export type UpdateCompanyPayload = {
     emailBody?: string;
     docUrl?: string;
     linkedinMessage?: string;
-    existingMetadata: any;
+    metadata: object;
 };
 
 export async function updateCompanyRecord(payload: UpdateCompanyPayload) {
-    console.log(`[Update Company] Updating record for ${payload.companyId}`);
-
-    // Retain old metadata and append version: 2
-    const updatedMetadata = {
-        ...(payload.existingMetadata || {}),
-        version: 2,
-    };
 
     const updateData: any = {
         enrichment_status: "COMPLETED",
-        metadata: updatedMetadata,
+        metadata: payload.metadata,
     };
 
     if (payload.emailSubject) updateData.email_subject = payload.emailSubject;
@@ -44,6 +37,5 @@ export async function updateCompanyRecord(payload: UpdateCompanyPayload) {
         throw new Error(`Failed to update company record: ${error.message}`);
     }
 
-    console.log(`[Update Company] Database update successful ✨`);
     return true;
 }

@@ -20,7 +20,7 @@ const ATTACHMENT_PDF_URL =
 export default inngest.createFunction(
   {
     id: "send-campaign",
-    retries: 3,
+    retries: 2,
     onFailure: async ({ event, error }) => {
       // Update campaign status to ERROR on failure
       const { campaignId } = event.data.event.data;
@@ -31,7 +31,6 @@ export default inngest.createFunction(
           error: error.message || "Campaign execution failed",
         })
         .eq("id", campaignId);
-      console.error(`[Send Campaign] Campaign ${campaignId} failed:`, error);
     },
   },
   { event: "campaign/start" },
@@ -41,7 +40,6 @@ export default inngest.createFunction(
 
     // Step 1: Fetch campaign details
     const campaign = await step.run("fetch-campaign", async () => {
-      console.log(`[Send Campaign] Fetching campaign details: ${campaignId}`);
       const { data, error } = await supabase
         .from("campaigns")
         .select("*")
@@ -49,11 +47,6 @@ export default inngest.createFunction(
         .single();
 
       if (error || !data) {
-        console.error(
-          `[Send Campaign] Campaign not found: ${campaignId}`,
-          error,
-        );
-        // Throwing NonRetriableError will prevent retries and mark the job as failed immediately
         throw new NonRetriableError(`Campaign not found: ${campaignId}`);
       }
       return data;
@@ -145,16 +138,7 @@ export default inngest.createFunction(
       return { success: true, emailsSent: 0 };
     }
 
-    // NOTE: pdfBuffer is intentionally NOT fetched here.
-    // Fetching it outside steps and closing over a large Buffer inside step.run()
-    // causes Inngest to serialize the binary as part of step memoization state,
-    // triggering "output_too_large". Instead, we fetch the PDF fresh inside each step.
 
-    // Step 5: Send emails - distribute across accounts (round-robin or pre-assigned)
-    // In new architecture, account is pre-assigned in campaign_leads.assigned_account_id
-    // But we need to fetch the actual account credentials (email/refresh_token) from `accounts` table.
-    // We already fetched `accounts` (campaign_accounts) in Step 3.
-    // We can map account_id to account object.
 
     const accountMap = new Map(
       accounts.map((a: any) => [a.account_id, a.accounts]),
@@ -349,7 +333,6 @@ export default inngest.createFunction(
       }
     });
 
-    console.log(`[Send Campaign] Campaign execution finished: ${campaignId}`);
     return {
       success: true,
       emailsSent: successfulSends,

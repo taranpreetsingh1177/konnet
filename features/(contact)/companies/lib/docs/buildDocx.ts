@@ -30,12 +30,13 @@ const HEADING_MAP: Record<1 | 2 | 3, (typeof HeadingLevel)[keyof typeof HeadingL
 function renderCoverTable(rows: { label: string; value: string }[]) {
     return new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
+        columnWidths: [3000, 6000],
         rows: rows.map(
             ({ label, value }) =>
                 new TableRow({
                     children: [
                         new TableCell({
-                            width: { size: 30, type: WidthType.PERCENTAGE },
+                            width: { size: 3000, type: WidthType.DXA },
                             borders: TABLE_BORDER,
                             shading: { type: ShadingType.SOLID, color: "F5F5F5" },
                             children: [
@@ -45,7 +46,7 @@ function renderCoverTable(rows: { label: string; value: string }[]) {
                             ],
                         }),
                         new TableCell({
-                            width: { size: 70, type: WidthType.PERCENTAGE },
+                            width: { size: 6000, type: WidthType.DXA },
                             borders: TABLE_BORDER,
                             children: [new Paragraph({ text: value })],
                         }),
@@ -56,14 +57,20 @@ function renderCoverTable(rows: { label: string; value: string }[]) {
 }
 
 function renderTable(headers: string[], rows: string[][]) {
+    // Google Docs relies heavily on explicit DXA sizes rather than percentages to layout tables properly.
+    // 9000 is approximately a standard full page width in DXA (Twips).
+    const colWidth = headers.length > 0 ? Math.floor(9000 / headers.length) : 9000;
+
     return new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
+        columnWidths: headers.map(() => colWidth),
         rows: [
             // Header row
             new TableRow({
                 children: headers.map(
                     (h) =>
                         new TableCell({
+                            width: { size: colWidth, type: WidthType.DXA },
                             borders: TABLE_BORDER,
                             shading: { type: ShadingType.SOLID, color: "1A1A1A" },
                             children: [
@@ -81,6 +88,7 @@ function renderTable(headers: string[], rows: string[][]) {
                         children: row.map(
                             (val) =>
                                 new TableCell({
+                                    width: { size: colWidth, type: WidthType.DXA },
                                     borders: TABLE_BORDER,
                                     shading: {
                                         type: ShadingType.SOLID,
