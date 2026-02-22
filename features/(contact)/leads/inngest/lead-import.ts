@@ -82,7 +82,7 @@ export default inngest.createFunction(
                             onConflict: "domain",
                             ignoreDuplicates: false,
                         })
-                        .select("id, name, created_at");
+                        .select("id, name, domain, created_at");
 
                 if (upsertError) {
                     throw new Error(`Failed to bulk upsert companies: ${upsertError.message}`);

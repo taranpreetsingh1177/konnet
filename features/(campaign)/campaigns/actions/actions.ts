@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { inngest } from "@/lib/inngest/client";
 import { revalidatePath } from "next/cache";
-import { Campaigns } from "@/features/(Campaign)/campaigns/lib/constants";
+import { Campaigns } from "@/features/(campaign)/campaigns/lib/constants";
 
 export type CreateCampaignInput = {
   name: string;
