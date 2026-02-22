@@ -1,6 +1,6 @@
 import FirecrawlApp, { Document } from "@mendable/firecrawl-js";
 
-const firecrawl = new FirecrawlApp({ apiKey: process.env.FIRECRAWL_API_KEY });
+const firecrawl = new FirecrawlApp({ apiKey: process.env.FIRECRAWL_API_KEY || "fc-8c5f1659b3a04394830d9951cffe1223" });
 
 import { z } from "zod";
 import { generateText, Output } from "ai";

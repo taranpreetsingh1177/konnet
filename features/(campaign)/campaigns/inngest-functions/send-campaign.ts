@@ -2,7 +2,6 @@ import { inngest } from "@/lib/inngest/client";
 import { createClient } from "@supabase/supabase-js";
 import { NonRetriableError } from "inngest";
 import { google } from "googleapis";
-import { createOutlookClient } from "@/lib/outlook";
 import { createEmailWithAttachment } from "@/lib/email/mime-builder";
 import { replaceTemplateVars } from "@/features/(contact)/companies/lib/mail/generate-email";
 import { Campaigns } from "../lib/constants";
@@ -35,10 +34,8 @@ export default inngest.createFunction(
   },
   { event: "campaign/start" },
   async ({ event, step }) => {
-    // Extract campaignId from event data
     const { campaignId } = event.data;
 
-    // Step 1: Fetch campaign details
     const campaign = await step.run("fetch-campaign", async () => {
       const { data, error } = await supabase
         .from("campaigns")
@@ -52,7 +49,6 @@ export default inngest.createFunction(
       return data;
     });
 
-    // Step 1.5: Schedule delay if needed
     if (campaign.scheduled_at) {
       const scheduledDate = new Date(campaign.scheduled_at);
       if (scheduledDate > new Date()) {
@@ -124,21 +120,13 @@ export default inngest.createFunction(
       return data || [];
     });
 
-    console.log(`[Send Campaign] Found ${campaignLeads.length} pending leads`);
 
     // Check if there are any leads to process
     if (campaignLeads.length === 0) {
-      console.warn(
-        `[Send Campaign] No pending leads found for campaign ${campaignId}`,
+      throw new NonRetriableError(
+        "No leads found for this campaign",
       );
-      await supabase
-        .from("campaigns")
-        .update({ status: Campaigns.Status.COMPLETED })
-        .eq("id", campaignId);
-      return { success: true, emailsSent: 0 };
     }
-
-
 
     const accountMap = new Map(
       accounts.map((a: any) => [a.account_id, a.accounts]),
@@ -187,9 +175,6 @@ export default inngest.createFunction(
 
       const sent = await step.run(`send-email-${item.id}`, async () => {
         try {
-          console.log(
-            `[Send Campaign] Sending email to ${lead.email} via ${account.email} (${account.provider || "gmail"})`,
-          );
           // Generate email content
           // Company must have templates ready - no fallback
           const subjectTemplate = company?.email_subject;
@@ -229,6 +214,7 @@ export default inngest.createFunction(
             process.env.GOOGLE_CLIENT_SECRET,
             `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/google/callback`,
           );
+
           oauth2Client.setCredentials({
             refresh_token: account.refresh_token,
           });
@@ -280,9 +266,6 @@ export default inngest.createFunction(
             })
             .eq("id", item.id);
 
-          console.log(
-            `[Send Campaign] Email sent successfully to ${lead.email}`,
-          );
           return true;
         } catch (error: any) {
           let errorMessage = error.message || "Unknown error";
@@ -302,9 +285,6 @@ export default inngest.createFunction(
       if (sent) {
         successfulSends++;
       }
-
-      // Add small delay between emails
-      await step.sleep(`rate-limit-delay-${item.id}`, "2s");
     }
 
     // Step 6: Update campaign status based on results

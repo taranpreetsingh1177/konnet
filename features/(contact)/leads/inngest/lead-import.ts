@@ -88,35 +88,19 @@ export default inngest.createFunction(
                     throw new Error(`Failed to bulk upsert companies: ${upsertError.message}`);
                 }
 
-                // Map them back to the original company names we got from leads
-                const nameToId = new Map<string, string>();
+                const domainToId = new Map<string, string>();
                 const newIds: string[] = [];
 
-                // Simple heuristic: if created_at is extremely recent, we consider it a NEW company 
-                // However, we just grab all returned ones
                 if (upsertedCompanies) {
-                    // Since domain is unique but lead inputs gave us `co.name`, we need to map via `co.domain` 
-                    const domainToId = new Map<string, string>(upsertedCompanies.map((c: any) => [c.domain, c.id]));
-
-                    uniqueCompaniesData.forEach((co) => {
-                        const id = domainToId.get(co.domain);
-                        if (id) {
-                            nameToId.set(co.name, id);
-                        }
-                    });
-
-                    // A more robust checking of what is genuinely "new" would require comparing timestamps or tracking existing ones,
-                    // but for simplicity, we trigger enrichment for all recently inserted ones or skip it altogether depending on the DB schema capabilities.
-                    // Inngest `company/enrich` prevents duplicates internally if designed well.
                     upsertedCompanies.forEach((c: any) => {
-                        // Just trigger enrichment for all upserted companies, since the DB upsert might have touched them.
-                        // Or better, we only trigger for ones created in last minute
+                        domainToId.set(c.domain, c.id);
                         newIds.push(c.id);
                     });
                 }
 
+                // Return array of [domain, id] pairs
                 return {
-                    companyNameToIdMapArray: Array.from(nameToId.entries()),
+                    companyNameToIdMapArray: Array.from(domainToId.entries()),
                     newCompanyIds: newIds
                 };
             },
@@ -138,9 +122,17 @@ export default inngest.createFunction(
                 const chunk = leads.slice(i, i + CHUNK_SIZE);
 
                 const leadsToInsert = chunk.map((lead) => {
-                    const companyId = lead.company
-                        ? companyNameToIdMap.get(lead.company.trim()) || null
-                        : null;
+                    let companyId = null;
+
+                    if (lead.company?.trim()) {
+                        const companyName = lead.company.trim();
+                        // 1. Find the domain we assigned to this company name
+                        const matchedCompany = uniqueCompaniesData.find(c => c.name === companyName);
+                        if (matchedCompany) {
+                            // 2. Look up the ID using the domain
+                            companyId = companyNameToIdMap.get(matchedCompany.domain) || null;
+                        }
+                    }
 
                     return {
                         user_id: userId,

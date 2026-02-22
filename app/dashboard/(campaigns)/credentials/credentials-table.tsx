@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
     Mail, Key, Calendar, CheckCircle2,
-    Trash2, MoreHorizontal, Plus
+    Trash2, MoreHorizontal, Plus, RefreshCw
 } from "lucide-react"
 import {
     DropdownMenu,
@@ -250,6 +250,14 @@ export function CredentialsTable() {
                                                 <MoreHorizontal className="w-4 h-4 text-gray-400" />
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end" className="w-44">
+                                                {account.provider === 'google' && (
+                                                    <DropdownMenuItem>
+                                                        <Link href={`/api/google/connect?login_hint=${encodeURIComponent(account.email)}`} className="flex items-center cursor-pointer">
+                                                            <RefreshCw className="w-4 h-4 mr-2" />
+                                                            Reconnect
+                                                        </Link>
+                                                    </DropdownMenuItem>
+                                                )}
                                                 <DropdownMenuItem
                                                     onClick={() => handleDelete(account.id)}
                                                     className="text-red-600"
